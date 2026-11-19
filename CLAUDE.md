@@ -44,3 +44,6 @@ A first-person, scroll-driven walk through an endless, impossible Japanese castl
 - `npm run dev` — dev server
 - `npm run build` — typecheck and build
 - `npm run lint` — oxlint
+
+## Workflow
+- After every build step, update README.md before finishing: tick the step in the Progress checklist, describe new features, controls and files, and note how to test them.

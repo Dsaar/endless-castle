@@ -1,16 +1,11 @@
-// Placeholder: confirms the page and fonts load. Replace when the scene is built.
+import { useState } from 'react'
+import TitleScreen from './ui/TitleScreen'
+
+const AUTHOR = 'Dsaar'
+
 export default function App() {
-  return (
-    <main
-      style={{
-        height: '100%',
-        display: 'grid',
-        placeItems: 'center',
-        fontSize: '2.5rem',
-        fontWeight: 500,
-      }}
-    >
-      it works
-    </main>
-  )
+  const [entered, setEntered] = useState(false)
+
+  // The 3D castle mounts here once it exists; for now, entering leaves the void.
+  return entered ? <main /> : <TitleScreen author={AUTHOR} onEnter={() => setEntered(true)} />
 }

@@ -1,0 +1,59 @@
+.smoke {
+  --smoke-cool: color-mix(in srgb, var(--color-ui-text) 7%, transparent);
+  --smoke-warm: color-mix(in srgb, var(--color-lantern) 6%, transparent);
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.smoke__puff {
+  position: absolute;
+  width: 70vmax;
+  height: 50vmax;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--smoke-cool), transparent);
+  filter: blur(40px);
+  will-change: transform;
+  animation: smoke-drift 60s ease-in-out infinite alternate;
+}
+
+.smoke__puff--1 { top: -10%; left: -25%; animation-duration: 64s; }
+.smoke__puff--2 { top: 35%; left: 40%; animation-duration: 78s; animation-delay: -20s; }
+.smoke__puff--3 {
+  top: 55%;
+  left: -20%;
+  background: radial-gradient(closest-side, var(--smoke-warm), transparent);
+  animation-duration: 90s;
+  animation-delay: -45s;
+}
+.smoke__puff--4 { top: -20%; left: 45%; animation-duration: 70s; animation-delay: -10s; animation-direction: alternate-reverse; }
+.smoke__puff--5 {
+  top: 20%;
+  left: 5%;
+  width: 55vmax;
+  height: 35vmax;
+  background: radial-gradient(closest-side, var(--smoke-warm), transparent);
+  animation-duration: 84s;
+  animation-delay: -30s;
+  animation-direction: alternate-reverse;
+}
+.smoke__puff--6 { top: 70%; left: 50%; animation-duration: 96s; animation-delay: -60s; }
+
+@keyframes smoke-drift {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate3d(8vw, -4vh, 0) scale(1.15) rotate(8deg); }
+  100% { transform: translate3d(-6vw, 5vh, 0) scale(0.95) rotate(-6deg); }
+}
+
+/* Pulls the edges back into the void so the smoke reads as depth, not haze. */
+.smoke__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 35%, var(--color-void) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smoke__puff { animation: none; }
+}
