@@ -8,8 +8,23 @@ const AUTHOR = 'Dsaar'
 // (and leva with it) is dropped from the bundle.
 const DevPanel = import.meta.env.DEV ? lazy(() => import('./ui/DevPanel')) : null
 
+// `?kit` opens the building-kit dev view instead of the game (dev builds only).
+const KitView =
+  import.meta.env.DEV && new URLSearchParams(window.location.search).has('kit')
+    ? lazy(() => import('./scene/KitView'))
+    : null
+
 export default function App() {
   const [entered, setEntered] = useState(false)
+
+  if (KitView) {
+    return (
+      <Suspense fallback={null}>
+        <KitView />
+        {DevPanel && <DevPanel />}
+      </Suspense>
+    )
+  }
 
   if (!entered) return <TitleScreen author={AUTHOR} onEnter={() => setEntered(true)} />
 

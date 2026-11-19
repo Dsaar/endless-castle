@@ -29,6 +29,8 @@ npm run lint     # oxlint
 | Title screen | Click **Enter in silence**  | Enter with sound off                        |
 | Title screen | Tab / Enter / Space         | Move between the buttons and choose one (the main button has focus on load) |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
+| Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
+| Kit view | Piece names at the bottom, or ← → | Glide the camera to the next piece |
 
 ## Features so far
 
@@ -73,16 +75,54 @@ After the title screen's `onEnter`, a full-screen React Three Fiber canvas mount
 3. In the **Dev** panel, raising **Fog → density** swallows the floor and panel in black. Raising **Bloom → threshold** above about 1 makes the panel's halo vanish while the bulb still glows. **Intensity** and **radius** change how strong and how wide the glow is.
 4. `npm run build` and `npm run preview`: no Dev panel appears.
 
+### Building kit
+
+Procedural pieces that the castle will be built from, in `src/scene/kit/`. Each one is a React component with `position`, `rotation` and `size` props, plus an optional `seed` that shifts the grain so copies don't look identical (it defaults to a hash of the position).
+
+| Piece | `size` | Other props | Notes |
+| ----- | ------ | ----------- | ----- |
+| `WoodBeam` | `[length, height, depth]` | | Horizontal, along local X, centered |
+| `Post` | `[width, height, depth]` | | Stands on `position`; grain runs up the post |
+| `FloorPlanks` | `[width, depth]` | `plankWidth` | Boards along X with staggered joints and 7 mm gaps over a dark underlay. Low roughness, so lanterns leave hot spots. |
+| `ShojiPanel` | `[width, height]` | `lit`, `kickboard` | Cedar frame, kumiko lattice, and a paper plane in the middle of the frame (reads from both sides). `lit` paper glows and blooms; unlit paper is lit only by the scene. |
+| `Lantern` | uniform scale | `kind` (`'hanging'` or `'standing'`), `cord`, `intensity`, `flicker`, `phase` | Emissive paper and one point light (distance 6, decay 2). A flickering lantern varies its light and paper glow together; `phase` keeps neighbours out of step. |
+| `Railing` | `[height, postWidth]` | `length` | Evenly spaced posts, a wide top rail and a lower rail; end posts rise above the rail with a cap |
+| `TatamiFloor` | `[width, depth]` | | Rounded to ~0.91 m half-mat cells. Mats follow the traditional rule (no point where four mats meet), with dark cloth borders on the long sides only. A 3 × 3 cell room gets the classic 4.5-mat pinwheel. |
+| `Roof` | `[width, rise, length]` | | A gabled temple roof: a concave profile with a small upturn at the eave tips, extruded along the ridge and then bent so the corners sweep up. Tiles on top, cedar underneath and on the gable ends, plus a ridge cap with end blocks. |
+
+How it stays cheap:
+
+- **Shared textures** (`textures.ts`), drawn once on canvas: cedar grain (long wavy streaks and pores), tatami rush, washi paper fibres and roof tiles. All tile seamlessly.
+- **Shared materials** (`materials.ts`): one per surface type, created once and reused by every piece. The only per-instance material is the paper of a flickering lantern, a clone that shares the same shader program.
+- **Merged geometry**: each piece's static boxes are merged into one mesh per material (all floorboards are one draw call, all tatami mats another, a whole railing one). Lantern frames are built once per kind and shared by every lantern.
+- **World-scaled UVs** (`texturedBox` in `geometry.ts`): texture density stays constant whatever the size, and the grain follows each piece's long axis.
+- Derived tones (straw, tile charcoal, border cloth) are blends of two palette colors (`src/lib/color.ts`), so no new hex values.
+
+### Kit dev view (`?kit`)
+
+Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern, with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
+
+**How to test:** run `npm run dev`, open `/?kit`, and step through the pieces:
+
+1. **Wood beam / Post:** long red-brown grain streaks running along the beam and up the post.
+2. **Floor planks:** staggered boards with dark gaps, and a bright polished hot spot under the lantern that moves as you orbit.
+3. **Shoji:** the left panel glows cream and blooms, with the lattice in silhouette; the right panel is unlit paper. Orbit behind them: both read from the back too.
+4. **Lanterns:** a hanging box lantern and a standing andon, both flickering gently and out of step with each other.
+5. **Railing:** posts, top rail and lower rail, with capped end posts.
+6. **Tatami:** an eight-mat room with dark borders on the long edges only. No point has four mat corners meeting.
+7. **Roof:** a tiled roof with curved slopes and upturned corners; orbit underneath to see the cedar soffit.
+
 ## Project structure
 
 ```
 index.html              Google Fonts, root element
 src/
   main.tsx              Entry point; applies the palette to CSS variables
-  App.tsx               Shows the title screen, then the 3D canvas (+ dev panel in dev)
+  App.tsx               Shows the title screen, then the 3D canvas (+ dev panel in dev); ?kit opens the kit view
   index.css             Global styles, font variables, .kanji and .label classes
   lib/
     palette.ts          The only source of colors (also exposed as --color-* CSS variables)
+    color.ts            Blends of two palette colors (three Color or CSS string)
     random.ts           Seeded PRNG (mulberry32) for stable procedural layouts
   state/
     useGameStore.ts     zustand store (soundEnabled)
@@ -94,6 +134,8 @@ src/
     Smoke.tsx           Drifting smoke background
     Smoke.css
     DevPanel.tsx        leva panel for fog and bloom (dev builds only)
+    KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
+    KitOverlay.css
   scene/                3D components (R3F)
     CastleCanvas.tsx    The <Canvas>: renderer settings, camera, scene contents
     CastleCanvas.css    Full-screen layer behind the UI, fade-in
@@ -102,6 +144,25 @@ src/
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
     PostEffects.tsx     Bloom, tone mapping, vignette, grain
     BloomTestRig.tsx    Temporary emissive panel + point light for judging bloom
+    renderer.ts         WebGL settings shared by every canvas
+    KitView.tsx         ?kit dev view: every kit piece in a row, each under a lantern
+    KitCameraRig.tsx    OrbitControls + GSAP glide between kit pieces
+    kitExhibits.ts      Kit view stops: names, orbit targets, camera offsets
+    kit/                The building kit
+      types.ts          Vec3 and the shared position / rotation / seed props
+      textures.ts       Canvas textures: cedar grain, tatami, washi paper, roof tiles
+      materials.ts      Shared materials (create once, never dispose)
+      geometry.ts       texturedBox (world-scaled UVs), merging, seeds, shared unit plane
+      useDisposable.ts  useMemo for geometry that disposes the old one
+      WoodBeam.tsx      Horizontal beam
+      Post.tsx          Vertical post
+      FloorPlanks.tsx   Polished floorboards with gaps
+      ShojiPanel.tsx    Frame, lattice and glowing paper
+      Lantern.tsx       Hanging and standing lanterns with a flickering point light
+      Railing.tsx       Posts, top rail, lower rail
+      tatamiLayout.ts   Traditional tatami layout search (no four-corner meetings)
+      TatamiFloor.tsx   Tatami mats with dark borders
+      Roof.tsx          Curved, extruded temple roof with upturned corners
   world/                Level generation
   audio/                Sound
 ```
@@ -113,7 +174,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 1. Project setup and style rules
 - [x] 2. Title screen
 - [x] 3. Canvas, atmosphere and post-processing
-- [ ] 4. Building kit
+- [x] 4. Building kit
 - [ ] 5. The Gate and the intro
 - [ ] 6. Movement
 - [ ] 7. The guide scroll

@@ -1,0 +1,60 @@
+/* The ?kit dev view's overlay. Lets clicks through to the canvas except on its own controls. */
+.kit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.25rem 1rem;
+  pointer-events: none;
+}
+
+.kit-overlay__header {
+  max-width: 28rem;
+}
+
+.kit-overlay__title {
+  margin: 0 0 0.4rem;
+  color: var(--color-lantern);
+}
+
+.kit-overlay__hint {
+  margin: 0;
+  font-size: 0.95rem;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.kit-overlay__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.kit-overlay__item {
+  pointer-events: auto;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--color-ui-text);
+  font-family: var(--font-latin);
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    opacity 0.2s,
+    border-color 0.2s;
+}
+
+.kit-overlay__item:hover,
+.kit-overlay__item:focus-visible {
+  opacity: 1;
+  outline: none;
+  border-color: var(--color-cedar-light);
+}
+
+.kit-overlay__item[aria-current='true'] {
+  opacity: 1;
+  color: var(--color-lantern);
+}
