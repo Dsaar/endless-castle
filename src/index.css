@@ -1,0 +1,38 @@
+/* Colors come from src/lib/palette.ts via applyPaletteToCss() — use var(--color-*) only. */
+
+:root {
+  --font-latin: 'Cormorant Garamond', 'Times New Roman', serif;
+  --font-kanji: 'Shippori Mincho', serif;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-void);
+  color: var(--color-ui-text);
+  font-family: var(--font-latin);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+.kanji {
+  font-family: var(--font-kanji);
+}
+
+/* Tiny uppercase label style used throughout the UI. */
+.label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+}
