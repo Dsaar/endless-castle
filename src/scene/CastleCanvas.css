@@ -1,0 +1,23 @@
+/* The 3D layer: fixed behind all UI (the title screen and future HUD sit at z-index 10+). */
+.castle-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: var(--color-void);
+  animation: castle-canvas-in 1.8s ease-out both;
+}
+
+@keyframes castle-canvas-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .castle-canvas {
+    animation: none;
+  }
+}
