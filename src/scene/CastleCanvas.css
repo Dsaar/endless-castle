@@ -4,7 +4,14 @@
   inset: 0;
   z-index: 0;
   background: var(--color-void);
+  /* Swipes and pinches are ours (walk / look), not the browser's. */
+  touch-action: none;
+  cursor: grab;
   animation: castle-canvas-in 1.8s ease-out both;
+}
+
+.castle-canvas:active {
+  cursor: grabbing;
 }
 
 @keyframes castle-canvas-in {

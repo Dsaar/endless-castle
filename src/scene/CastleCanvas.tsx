@@ -2,11 +2,13 @@ import { Canvas } from '@react-three/fiber'
 import Atmosphere from './Atmosphere'
 import DriftingMotes from './DriftingMotes'
 import IntroCameraRig from './IntroCameraRig'
+import Player from './Player'
 import PostEffects from './PostEffects'
 import { CANVAS_DPR, GL_OPTIONS } from './renderer'
 import Starfield from './Starfield'
 import Gate from '../world/segments/Gate'
 import { INTRO_START } from '../world/segments/gate/layout'
+import { GATE_PATH } from '../world/segments/gate/path'
 import './CastleCanvas.css'
 
 /** The full-screen WebGL layer. Sits behind every HTML overlay. */
@@ -16,7 +18,7 @@ export default function CastleCanvas() {
       <Canvas
         dpr={CANVAS_DPR}
         gl={GL_OPTIONS}
-        // IntroCameraRig takes over the position and aim before the first frame.
+        // IntroCameraRig takes over the position and aim before the first frame, then Player.
         camera={{ fov: 55, near: 0.1, far: 1500, position: INTRO_START }}
       >
         <Atmosphere />
@@ -27,6 +29,8 @@ export default function CastleCanvas() {
         <DriftingMotes count={160} volume={[16, 10, 16]} rise={0.22} size={0.07} brightness={2.5} flicker={1} seed={3} />
         <Gate />
         <IntroCameraRig />
+        {/* Takes the camera over from the intro rig once it arrives. */}
+        <Player path={GATE_PATH} />
         <PostEffects />
       </Canvas>
     </div>

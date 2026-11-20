@@ -1,5 +1,13 @@
-import { Leva, useControls } from 'leva'
+import { useEffect } from 'react'
+import { Leva, monitor, useControls } from 'leva'
+import { onFootstep } from '../state/footsteps'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
+import { usePlayerStore } from '../state/usePlayerStore'
+
+const readProgress = () => usePlayerStore.getState().progress
+const readSpeed = () => usePlayerStore.getState().speed
+let footstepCount = 0
+const readFootsteps = () => footstepCount
 
 /**
  * Dev-only tuning panel (leva). Loaded lazily behind `import.meta.env.DEV`, so neither
@@ -8,6 +16,14 @@ import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereS
 export default function DevPanel() {
   const setAtmosphere = useAtmosphereStore((s) => s.setAtmosphere)
   const d = ATMOSPHERE_DEFAULTS
+
+  useEffect(
+    () =>
+      onFootstep(() => {
+        footstepCount++
+      }),
+    [],
+  )
 
   useControls('Fog', {
     density: {
@@ -48,6 +64,13 @@ export default function DevPanel() {
       step: 0.01,
       onChange: (v: number) => setAtmosphere({ bloomRadius: v }),
     },
+  })
+
+  // Read-only: where the player is, how fast they're going, and how many footsteps so far.
+  useControls('Player', {
+    'progress (m)': monitor(readProgress, { interval: 50 }),
+    'speed (m/s)': monitor(readSpeed, { graph: true, interval: 30 }),
+    footsteps: monitor(readFootsteps, { interval: 100 }),
   })
 
   return <Leva titleBar={{ title: 'Dev' }} />

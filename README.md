@@ -28,7 +28,14 @@ npm run lint     # oxlint
 | Title screen | Click **Enter the castle**  | Enter with sound on                         |
 | Title screen | Click **Enter in silence**  | Enter with sound off                        |
 | Title screen | Tab / Enter / Space         | Move between the buttons and choose one (the main button has focus on load) |
-| The Gate     | (none yet)                  | The intro plays by itself. "Scroll to enter" is shown, but scrolling does nothing until step 6. |
+| The Gate     | (none)                      | The intro plays by itself. Walking and looking unlock when the camera arrives. |
+| Walking      | Mouse wheel / trackpad scroll | Walk forward (down) or back (up). Scroll faster to run, up to a top speed. |
+| Walking      | W / S, ↑ / ↓ (hold)         | Walk forward / back at a steady pace |
+| Walking      | Space / Shift+Space         | One stride (1.6 m, two steps) forward / back |
+| Walking      | Touch: swipe up / down      | Walk forward / back. A quick flick carries on a little after you lift your finger. |
+| Looking      | Mouse drag                  | Look around (drag the world: drag right to turn left). Limited to ±60° sideways, 30° up, 40° down. |
+| Looking      | Touch: swipe sideways, or two-finger drag | Look around. A one-finger swipe picks walk or look by its first direction. |
+| Looking      | Move the mouse (desktop)    | The view leans up to 4° toward the pointer |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
 | Kit view | Piece names at the bottom, or ← → | Glide the camera to the next piece |
@@ -125,7 +132,7 @@ The opening scene, built from the kit in `src/world/segments/Gate.tsx`. The play
 - **Intro** (`src/scene/IntroCameraRig.tsx`): after **Enter**, the camera starts 24 m back over the void, slightly high and tilted down. It dollies to the start of the bridge at eye height over 5 s (GSAP, `power2.out`). The move starts after a few warm-up frames, so shader compilation doesn't eat into it. When it arrives, it sets `introComplete` in `useGameStore`.
 - **Intro text** (`src/ui/IntroOverlay.tsx`): once `introComplete` is set, **YOU HAVE BEEN SUMMONED.** fades in at the center (uppercase, widely letter-spaced, opening up slightly as it appears). Then a small **SCROLL TO ENTER** label fades in below it, over a thin vertical line that keeps drawing downward and fading. A soft dark pool behind the text keeps it readable over the lit shoji.
 - **Reduced motion:** the camera starts at the bridge and the text appears without animation.
-- Nothing responds to scroll yet.
+- When the camera arrives, `Player` takes over (see **Movement**). Once you have walked about 0.6 m, the intro text fades out and stays gone.
 
 **How to test:** run `npm run dev`, click **Enter the castle**, and check that:
 
@@ -136,8 +143,46 @@ The opening scene, built from the kit in `src/world/segments/Gate.tsx`. The play
    - Thin lines of light leak through the closed doors, and a warm streak spreads across the floor in front of them.
    - The balcony railing, the upper shoji and the curved roof with upturned corners read against a faint warm haze.
 4. Left and right, far off: the pagodas show grids of lit windows and a few dark ones. Their lower stories fade into fog.
-5. After the camera stops, **YOU HAVE BEEN SUMMONED.** fades in, then **SCROLL TO ENTER** with its pulsing line. Scrolling does nothing.
+5. After the camera stops, **YOU HAVE BEEN SUMMONED.** fades in, then **SCROLL TO ENTER** with its pulsing line. Scrolling walks you onto the bridge and the text fades away.
 6. With reduced motion turned on in the OS, the scene opens at the bridge and the text is already there.
+
+### Movement
+
+Scroll-driven walking along a path, in `src/scene/Player.tsx`.
+
+- **The path:** the world provides a `CatmullRomCurve3` at floor level. For the Gate it is `GATE_PATH` (`src/world/segments/gate/path.ts`, points in `layout.ts`). It runs straight from the bridge head, where the intro stops, to the foot of the bridge, about 3.4 m from the doors, so the whole doorway fits in view. It is 18.5 m long. The canvas passes it to `<Player path={…} />`.
+- **The store** (`src/state/usePlayerStore.ts`): `targetProgress` is where input wants you to be and `progress` is where you are, both in meters along the path. It also holds `speed` (m/s) and `pathLength`. `walkBy(meters)` moves the target. The target is kept between the start and the end of the path, and at most 8 m from the player, so a huge flick can't queue up a long run. Progress can never go below the start.
+- **Input** (`src/scene/player/usePlayerInput.ts`):
+  - Wheel, swipe and Space move the target straight away.
+  - Held W / S / ↑ / ↓ push the target along at 1.5 m/s.
+  - Drag deltas and the mouse position go into a small mutable object that `Player` reads each frame.
+  - Nothing responds until the intro has finished.
+  - Wheel deltas are normalised from lines and pages to pixels. One 100 px notch is about one step (0.8 m).
+- **Smoothing:** each frame a goal eases toward the target, and progress follows the goal with a critically damped spring capped at 3.6 m/s. So speed and acceleration both change smoothly: no jitter when wheel ticks arrive unevenly, and no lurch on the first tick. Scrolling faster pushes the target further ahead, and the player speeds up into a run. Above 2.4 m/s counts as running.
+- **Camera:** on the path at 1.6 m eye height. Yaw and pitch come from the path tangent (a finite difference with scratch vectors, since `getTangentAt` allocates). The drag look and the mouse look-around are added on top, with no roll except the bob's. The intro ends exactly at the path start facing down it, so the hand-over doesn't jump.
+- **Head-bob:** tied to distance walked, not time. The head is lowest at each footfall (one dip per step), and there is a slight sideways sway and roll once per stride. The bob fades in with speed: about 2.8 cm at walking pace, rising to 5 cm at a run, and fading to nothing when you stop.
+- **Footsteps** (`src/state/footsteps.ts`): `onFootstep(listener)` hears each step: `{ foot, speed, running, progress }`. A step comes every 0.8 m walked, forward or back, and the first one comes after half a step. Audio will hook in at step 16.
+- **Look:**
+  - Drag (mouse, a sideways swipe, or two fingers) turns the view, within ±60° yaw, +30° / −40° pitch.
+  - While you walk and aren't dragging, the view eases back to center, settling in about 1 s.
+  - On desktop (`hover: hover` and `pointer: fine`), the view also leans toward the mouse: at most 4° from center, slightly less vertically. It is held still during a drag and eases back when the mouse leaves the window.
+- **Reduced motion:** no head-bob and no mouse look-around. Walking and drag look work as usual.
+- **Performance:** no allocations in the frame loop. The store is written once per frame only while something is moving, and it stops when you're still. No React component subscribes to `progress` directly: the intro overlay uses `subscribe` and the dev panel uses `getState`.
+- **Dev panel:** a **Player** folder shows live progress, a speed graph and a footstep count.
+- Every feel number (speeds, smoothing, bob, look limits, sensitivities) is in `src/scene/player/tuning.ts`.
+
+**How to test:** run `npm run dev`, click **Enter the castle**, wait for the intro to finish, and check that:
+
+1. Scrolling before the camera arrives does nothing.
+2. One wheel notch moves you about a step forward, with a gentle start and stop. Scrolling up at the start does nothing (you can't go behind the start).
+3. Scrolling steadily walks you across the bridge with a soft bob. Scrolling hard makes the speed graph in **Dev → Player** climb and flatten at about 3.6 m/s, the bob gets stronger, and when you stop scrolling you glide to a halt.
+4. Holding **W** or **↑** walks at a steady pace and **S** or **↓** walks back. **Space** takes one stride (two footsteps in the counter) and **Shift+Space** takes one back.
+5. At the end of the bridge you stop, with the whole doorway in view. Scrolling further does nothing.
+6. Dragging turns the view and stops at the limits. Start walking and the view eases back to center within about a second.
+7. Without dragging, moving the mouse to a screen edge leans the view slightly that way.
+8. The footstep counter goes up about every 0.8 m (about 23 steps over the whole path).
+9. In DevTools device mode with touch: swiping up walks, a quick flick carries on a little, swiping down walks back, and a sideways swipe or two-finger drag looks around.
+10. With reduced motion turned on, the walk has no bob.
 
 ### Kit dev view (`?kit`)
 
@@ -165,8 +210,11 @@ src/
     palette.ts          The only source of colors (also exposed as --color-* CSS variables)
     color.ts            Blends of two palette colors (three Color or CSS string)
     random.ts           Seeded PRNG (mulberry32) for stable procedural layouts
+    math.ts             clamp, smoothstep, damp, smoothDamp (critically damped spring)
   state/
     useGameStore.ts     zustand store (soundEnabled, introComplete)
+    usePlayerStore.ts   Progress along the path: target, smoothed progress, speed, path length, walkBy()
+    footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
   ui/
     TitleScreen.tsx     Title overlay: layout, intro fade, enter and fade-out logic
@@ -174,8 +222,8 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel for fog and bloom (dev builds only)
-    IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro
+    DevPanel.tsx        leva panel for fog and bloom, plus player monitors (dev builds only)
+    IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
     KitOverlay.css
@@ -187,6 +235,10 @@ src/
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
     PostEffects.tsx     Bloom, tone mapping, vignette, grain
     IntroCameraRig.tsx  GSAP dolly from far back to the start of the bridge
+    Player.tsx          First-person walker: smoothing, camera on the path, head-bob, look, footsteps
+    player/
+      tuning.ts         Every movement and look constant (eye height, speeds, bob, limits)
+      usePlayerInput.ts Wheel, keys, mouse drag, touch swipe and mouse look-around
     Pagoda.tsx          Distant multi-story pagoda with lit window grids
     distantHaze.ts      Thinner fog + low fog bank for far scenery (material patch)
     renderer.ts         WebGL settings shared by every canvas
@@ -212,7 +264,8 @@ src/
     segments/
       Gate.tsx          The opening scene: bridge, landing, gate, back glow, pagodas
       gate/
-        layout.ts       Every dimension of the opening, plus the intro camera path
+        layout.ts       Every dimension of the opening, the walking path's points and the intro camera path
+        path.ts         GATE_PATH: the walkable CatmullRomCurve3 across the bridge
         Bridge.tsx      Bridge deck, stringers, railings, piers, head lanterns
         Landing.tsx     The platform the gate stands on
         GateHouse.tsx   The two-story gate: posts, shoji, balcony, upper story, roof
@@ -232,7 +285,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 3. Canvas, atmosphere and post-processing
 - [x] 4. Building kit
 - [x] 5. The Gate and the intro
-- [ ] 6. Movement
+- [x] 6. Movement
 - [ ] 7. The guide scroll
 - [ ] 8. The endless segment system
 - [ ] 9. The HUD
