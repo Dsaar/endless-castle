@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import CastleCanvas from './scene/CastleCanvas'
+import IntroOverlay from './ui/IntroOverlay'
 import TitleScreen from './ui/TitleScreen'
 
 const AUTHOR = 'Dsaar'
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <>
       <CastleCanvas />
+      <IntroOverlay />
       {DevPanel && (
         <Suspense fallback={null}>
           <DevPanel />

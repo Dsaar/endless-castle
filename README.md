@@ -28,6 +28,7 @@ npm run lint     # oxlint
 | Title screen | Click **Enter the castle**  | Enter with sound on                         |
 | Title screen | Click **Enter in silence**  | Enter with sound off                        |
 | Title screen | Tab / Enter / Space         | Move between the buttons and choose one (the main button has focus on load) |
+| The Gate     | (none yet)                  | The intro plays by itself. "Scroll to enter" is shown, but scrolling does nothing until step 6. |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
 | Kit view | Piece names at the bottom, or ← → | Glide the camera to the next piece |
@@ -64,15 +65,14 @@ After the title screen's `onEnter`, a full-screen React Three Fiber canvas mount
 - **Starfield:** 2000 tiny warm-white points (shoji cream) on a 600-unit sphere that follows the camera, so they always look infinitely far away. They ignore fog. Most are faint pinpricks and a few are brighter. Each one twinkles slowly with its own speed and phase, all computed in the shader.
 - **Dust and embers:** two layers of amber, additive particles in a box that follows the camera. Dust: 500 faint, slow motes that stay below the bloom threshold. Embers: 160 brighter sparks that rise faster, flicker and bloom. Rising, swaying and recycling (a mote that leaves the top of the box comes back in at the bottom) all happen in the vertex shader, and motes fade near the box walls so they never pop. The CPU only updates a few uniforms per frame.
 - **Post-processing:** Bloom (mipmap blur, threshold 0.6, intensity 1.2) → ACES tone mapping → Vignette (darkness 0.7) → film grain (Noise, opacity 0.04). The scene renders into a half-float buffer, so emissive values above 1 reach the bloom intact.
-- **Bloom test rig (temporary):** a glowing shoji-cream emissive panel, one amber point light with a small bright bulb, and a dark cedar floor so you can see the light's falloff into the fog. The real castle replaces it from step 4.
 - **Dev panel (leva):** only in `npm run dev`. Tunes fog density and bloom intensity, threshold, smoothing and radius live. The panel writes to a zustand store (`useAtmosphereStore`) and the scene reads from it. Production builds use the defaults, and leva is left out of the bundle (`import.meta.env.DEV` guards a lazy import).
 - Stars and motes use seeded randomness (`src/lib/random.ts`), so the layout is the same on every reload.
 
 **How to test:** run `npm run dev`, then click **Enter the castle** and check that:
 
-1. The scene fades in: a cream panel with a soft halo, an amber bulb to its right, a warm pool of light on the floor, and stars around it.
+1. The scene fades in with stars around it (the temporary bloom test rig from this step has been replaced by the Gate, below).
 2. Stars twinkle slowly. Amber embers drift upward and flicker. Faint dust hangs in the air.
-3. In the **Dev** panel, raising **Fog → density** swallows the floor and panel in black. Raising **Bloom → threshold** above about 1 makes the panel's halo vanish while the bulb still glows. **Intensity** and **radius** change how strong and how wide the glow is.
+3. In the **Dev** panel, raising **Fog → density** swallows the bridge and gate in black. Raising **Bloom → threshold** above about 1 makes the shoji halo vanish while the lanterns and the door slits still glow. **Intensity** and **radius** change how strong and how wide the glow is.
 4. `npm run build` and `npm run preview`: no Dev panel appears.
 
 ### Building kit
@@ -98,6 +98,47 @@ How it stays cheap:
 - **World-scaled UVs** (`texturedBox` in `geometry.ts`): texture density stays constant whatever the size, and the grain follows each piece's long axis.
 - Derived tones (straw, tile charcoal, border cloth) are blends of two palette colors (`src/lib/color.ts`), so no new hex values.
 
+### The Gate and the intro
+
+The opening scene, built from the kit in `src/world/segments/Gate.tsx`. The player faces -Z. All dimensions live in `src/world/segments/gate/layout.ts`.
+
+- **Bridge** (`gate/Bridge.tsx`): an 18 m long, 3 m wide bridge over the void. Boards run across it on two stringers. It has railings on both sides and pairs of piers every few meters that drop into the fog. A pair of standing lanterns at its head gives the first pool of warm light.
+- **Landing** (`gate/Landing.tsx`): a 16 × 9 m platform with deep edge beams, railings around it and four tall corner piers.
+- **Gate house** (`gate/GateHouse.tsx`): a two-story gate.
+  - Lower story: closed central doors, with glowing shoji and lit transoms on both sides.
+  - Two large hanging lanterns, either side of the doors.
+  - A balcony with railings and bracket beams, then an upper story that is lit shoji all across.
+  - A band of stacked beams under the large curved kit `Roof`, which has swept-up corners.
+  - A hidden fill light, standing in for the upper shoji's glow, lights the balcony and the eaves soffit.
+- **Sliding doors** (`gate/SlidingDoors.tsx`): two heavy board leaves on a sill and head rail. A bright plane behind them shows through the center slit, the gaps between boards and the gaps at the top and bottom, and those lines bloom. A small spill light and an additive streak on the floor (`gate/DoorLightSpill.tsx`, a canvas mask) carry the leak out onto the landing.
+- **Shoji bays** (`gate/ShojiBay.tsx`): a row of `ShojiPanel`s filling a bay, with an optional dividing beam and a lit transom above it.
+- **Back glow** (`gate/GateBackGlow.tsx`): a faint warm haze far behind the gate (additive, outside the fog). It lifts the black just enough for the roof's curve to read as a silhouette.
+- **Distant pagodas** (`src/scene/Pagoda.tsx`): two five-story towers, far out to the left and right.
+  - Square stories narrow toward the top. Each has a lathed, squared-off hip roof with upturned corners and a faint warm underside, and a spire with nine rings crowns the tower.
+  - Every story has a grid of windows on all four sides, most of them lit, chosen by a seeded random pattern.
+  - Each tower costs three draw calls: the body, the roofs and the windows (instanced). All three use unlit materials.
+- **Distant haze** (`src/scene/distantHaze.ts`): a material patch for far scenery.
+  - It swaps the normal fog for a thinner one: the scene's live `FogExp2` density × 0.5, in the same color.
+  - It adds a fog bank by world height, so the pagodas stay faintly visible and their bases sink into the fog.
+  - Near objects keep the normal fog.
+- **Lights:** 6 point lights (2 bridge lanterns, 2 gate lanterns, the door spill and the upper fill; none on the pagodas) plus a very faint warm hemisphere fill.
+- **Intro** (`src/scene/IntroCameraRig.tsx`): after **Enter**, the camera starts 24 m back over the void, slightly high and tilted down. It dollies to the start of the bridge at eye height over 5 s (GSAP, `power2.out`). The move starts after a few warm-up frames, so shader compilation doesn't eat into it. When it arrives, it sets `introComplete` in `useGameStore`.
+- **Intro text** (`src/ui/IntroOverlay.tsx`): once `introComplete` is set, **YOU HAVE BEEN SUMMONED.** fades in at the center (uppercase, widely letter-spaced, opening up slightly as it appears). Then a small **SCROLL TO ENTER** label fades in below it, over a thin vertical line that keeps drawing downward and fading. A soft dark pool behind the text keeps it readable over the lit shoji.
+- **Reduced motion:** the camera starts at the bridge and the text appears without animation.
+- Nothing responds to scroll yet.
+
+**How to test:** run `npm run dev`, click **Enter the castle**, and check that:
+
+1. The scene fades in from far back. The gate is small and hazy, and the pagodas are barely there. The camera glides forward, fast at first and then slowing, and comes to rest at the start of the bridge about 5 s later.
+2. From the bridge: the two floor lanterns light the first planks and the railings, the middle of the bridge falls into darkness, and the gate glows at the end.
+3. At the gate:
+   - The lower shoji and transoms glow, and the two hanging lanterns flicker out of step.
+   - Thin lines of light leak through the closed doors, and a warm streak spreads across the floor in front of them.
+   - The balcony railing, the upper shoji and the curved roof with upturned corners read against a faint warm haze.
+4. Left and right, far off: the pagodas show grids of lit windows and a few dark ones. Their lower stories fade into fog.
+5. After the camera stops, **YOU HAVE BEEN SUMMONED.** fades in, then **SCROLL TO ENTER** with its pulsing line. Scrolling does nothing.
+6. With reduced motion turned on in the OS, the scene opens at the bridge and the text is already there.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern, with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -118,14 +159,14 @@ Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and 
 index.html              Google Fonts, root element
 src/
   main.tsx              Entry point; applies the palette to CSS variables
-  App.tsx               Shows the title screen, then the 3D canvas (+ dev panel in dev); ?kit opens the kit view
+  App.tsx               Shows the title screen, then the 3D canvas and intro overlay (+ dev panel in dev); ?kit opens the kit view
   index.css             Global styles, font variables, .kanji and .label classes
   lib/
     palette.ts          The only source of colors (also exposed as --color-* CSS variables)
     color.ts            Blends of two palette colors (three Color or CSS string)
     random.ts           Seeded PRNG (mulberry32) for stable procedural layouts
   state/
-    useGameStore.ts     zustand store (soundEnabled)
+    useGameStore.ts     zustand store (soundEnabled, introComplete)
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
   ui/
     TitleScreen.tsx     Title overlay: layout, intro fade, enter and fade-out logic
@@ -134,6 +175,8 @@ src/
     Smoke.tsx           Drifting smoke background
     Smoke.css
     DevPanel.tsx        leva panel for fog and bloom (dev builds only)
+    IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro
+    IntroOverlay.css
     KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
     KitOverlay.css
   scene/                3D components (R3F)
@@ -143,7 +186,9 @@ src/
     Starfield.tsx       Twinkling star sphere (shader points)
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
     PostEffects.tsx     Bloom, tone mapping, vignette, grain
-    BloomTestRig.tsx    Temporary emissive panel + point light for judging bloom
+    IntroCameraRig.tsx  GSAP dolly from far back to the start of the bridge
+    Pagoda.tsx          Distant multi-story pagoda with lit window grids
+    distantHaze.ts      Thinner fog + low fog bank for far scenery (material patch)
     renderer.ts         WebGL settings shared by every canvas
     KitView.tsx         ?kit dev view: every kit piece in a row, each under a lantern
     KitCameraRig.tsx    OrbitControls + GSAP glide between kit pieces
@@ -164,6 +209,17 @@ src/
       TatamiFloor.tsx   Tatami mats with dark borders
       Roof.tsx          Curved, extruded temple roof with upturned corners
   world/                Level generation
+    segments/
+      Gate.tsx          The opening scene: bridge, landing, gate, back glow, pagodas
+      gate/
+        layout.ts       Every dimension of the opening, plus the intro camera path
+        Bridge.tsx      Bridge deck, stringers, railings, piers, head lanterns
+        Landing.tsx     The platform the gate stands on
+        GateHouse.tsx   The two-story gate: posts, shoji, balcony, upper story, roof
+        ShojiBay.tsx    A bay of shoji panels with an optional lit transom
+        SlidingDoors.tsx  Closed board doors with light leaking through
+        DoorLightSpill.tsx  Additive light streak on the floor in front of the doors
+        GateBackGlow.tsx  Faint warm haze behind the roof
   audio/                Sound
 ```
 
@@ -175,7 +231,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 2. Title screen
 - [x] 3. Canvas, atmosphere and post-processing
 - [x] 4. Building kit
-- [ ] 5. The Gate and the intro
+- [x] 5. The Gate and the intro
 - [ ] 6. Movement
 - [ ] 7. The guide scroll
 - [ ] 8. The endless segment system

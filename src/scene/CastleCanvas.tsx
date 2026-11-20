@@ -1,13 +1,13 @@
 import { Canvas } from '@react-three/fiber'
 import Atmosphere from './Atmosphere'
-import BloomTestRig from './BloomTestRig'
 import DriftingMotes from './DriftingMotes'
+import IntroCameraRig from './IntroCameraRig'
 import PostEffects from './PostEffects'
 import { CANVAS_DPR, GL_OPTIONS } from './renderer'
 import Starfield from './Starfield'
+import Gate from '../world/segments/Gate'
+import { INTRO_START } from '../world/segments/gate/layout'
 import './CastleCanvas.css'
-
-const EYE_HEIGHT = 1.6
 
 /** The full-screen WebGL layer. Sits behind every HTML overlay. */
 export default function CastleCanvas() {
@@ -16,9 +16,8 @@ export default function CastleCanvas() {
       <Canvas
         dpr={CANVAS_DPR}
         gl={GL_OPTIONS}
-        camera={{ fov: 55, near: 0.1, far: 1500, position: [0, EYE_HEIGHT, 6] }}
-        // R3F aims the default camera at the origin; look straight ahead at eye height instead.
-        onCreated={({ camera }) => camera.lookAt(0, EYE_HEIGHT, 0)}
+        // IntroCameraRig takes over the position and aim before the first frame.
+        camera={{ fov: 55, near: 0.1, far: 1500, position: INTRO_START }}
       >
         <Atmosphere />
         <Starfield />
@@ -26,7 +25,8 @@ export default function CastleCanvas() {
         <DriftingMotes count={500} volume={[14, 8, 14]} rise={0.05} size={0.035} brightness={0.35} flicker={0} seed={2} />
         {/* Embers: a few bright, flickering sparks that rise faster and glow. */}
         <DriftingMotes count={160} volume={[16, 10, 16]} rise={0.22} size={0.07} brightness={2.5} flicker={1} seed={3} />
-        <BloomTestRig />
+        <Gate />
+        <IntroCameraRig />
         <PostEffects />
       </Canvas>
     </div>
