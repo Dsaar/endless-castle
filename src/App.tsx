@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import CastleCanvas from './scene/CastleCanvas'
+import GuideButton from './ui/GuideButton'
+import GuideScroll from './ui/GuideScroll'
 import IntroOverlay from './ui/IntroOverlay'
 import TitleScreen from './ui/TitleScreen'
 
@@ -33,6 +35,8 @@ export default function App() {
     <>
       <CastleCanvas />
       <IntroOverlay />
+      <GuideButton />
+      <GuideScroll />
       {DevPanel && (
         <Suspense fallback={null}>
           <DevPanel />

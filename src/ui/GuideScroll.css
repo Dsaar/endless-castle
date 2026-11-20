@@ -1,0 +1,679 @@
+/*
+ * The guide: a hanging paper scroll. Every color is a palette variable or a blend of two.
+ * GSAP drives the unroll (roller `transform`, paper `--unrolled` for its clip, roller grain `--roll`).
+ */
+.guide {
+  /* Ink: near-black with a little cedar in it. */
+  --guide-ink: color-mix(in srgb, var(--color-void) 82%, var(--color-cedar-dark));
+  --guide-ink-faint: color-mix(in srgb, var(--guide-ink) 22%, transparent);
+  /* Brass, from lantern light and cedar. */
+  --guide-brass: color-mix(in srgb, var(--color-lantern) 55%, var(--color-cedar-light));
+  --guide-brass-hi: color-mix(in srgb, var(--color-lantern) 60%, var(--color-shoji));
+  --guide-brass-lo: color-mix(in srgb, var(--color-cedar-light) 55%, var(--color-void));
+  --guide-wood-lo: color-mix(in srgb, var(--color-cedar-dark) 40%, var(--color-void));
+
+  --roller-h: 22px;
+  --roller-overhang: 18px;
+  --paper-w: min(34rem, calc(100vw - 2rem - 2 * var(--roller-overhang)));
+  --paper-h: min(44rem, calc(100dvh - 2 * var(--roller-h) - 5rem));
+
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  overflow: hidden;
+  /* A faint lantern warmth behind the scroll; the canvas itself is dimmed and blurred. */
+  background:
+    radial-gradient(closest-side, color-mix(in srgb, var(--color-lantern) 9%, transparent), transparent),
+    color-mix(in srgb, var(--color-void) 30%, transparent);
+  opacity: 0;
+}
+
+/* Rolling back up: the castle is live again underneath, so let clicks and drags through. */
+.guide--closing {
+  pointer-events: none;
+}
+
+.guide__scroll {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(var(--paper-w) + 2 * var(--roller-overhang));
+  /* Hanging cord room above the top roller. */
+  margin-top: 1.5rem;
+}
+
+/* --- Rollers ------------------------------------------------------------------------------ */
+
+.guide__roller {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: var(--roller-h);
+  flex: none;
+  will-change: transform;
+}
+
+/* A cedar cylinder: fixed shading on top, grain stripes that travel with `--roll` as it turns. */
+.guide__wood {
+  position: absolute;
+  inset: 2px 9px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-void) 55%, transparent) 0%,
+      transparent 30%,
+      color-mix(in srgb, var(--color-lantern) 22%, transparent) 40%,
+      transparent 55%,
+      color-mix(in srgb, var(--color-void) 70%, transparent) 100%
+    ),
+    linear-gradient(
+        to bottom,
+        transparent 45%,
+        color-mix(in srgb, var(--color-void) 35%, transparent) 45% 60%,
+        transparent 60%
+      )
+      0 var(--roll, 0px) / 100% 7px,
+    linear-gradient(
+        to bottom,
+        transparent 30%,
+        color-mix(in srgb, var(--color-cedar-light) 45%, transparent) 30% 42%,
+        transparent 42%
+      )
+      0 var(--roll, 0px) / 100% 11px,
+    var(--color-cedar-dark);
+  box-shadow: 0 3px 6px color-mix(in srgb, var(--color-void) 60%, transparent);
+}
+
+/* Brass end caps, a little taller than the roller. */
+.guide__cap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to bottom,
+    var(--guide-brass-lo) 0%,
+    var(--guide-brass-hi) 28%,
+    var(--guide-brass) 55%,
+    var(--guide-brass-lo) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-void) 30%, transparent),
+    0 2px 4px color-mix(in srgb, var(--color-void) 60%, transparent);
+}
+
+/* A raised ring where the cap meets the wood. */
+.guide__cap::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 1px;
+  background: linear-gradient(to bottom, var(--guide-brass-lo), var(--guide-brass-hi) 35%, var(--guide-brass-lo));
+}
+
+.guide__cap--left {
+  left: 0;
+}
+
+.guide__cap--left::after {
+  right: -2px;
+}
+
+.guide__cap--right {
+  right: 0;
+}
+
+.guide__cap--right::after {
+  left: -2px;
+}
+
+/* The hanging cord, from both ends of the top roller up to a nail. Behind the wood. */
+.guide__cord {
+  position: absolute;
+  z-index: -1;
+  left: 8%;
+  bottom: 50%;
+  width: 84%;
+  height: 2.25rem;
+  overflow: visible;
+  fill: none;
+  stroke: var(--guide-brass-lo);
+  stroke-width: 1.5px;
+}
+
+.guide__nail {
+  position: absolute;
+  left: 50%;
+  bottom: calc(50% + 2.25rem - 6px);
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, var(--guide-brass-hi), var(--guide-brass-lo));
+}
+
+/* --- Paper -------------------------------------------------------------------------------- */
+
+.guide__paper {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: var(--paper-w);
+  height: var(--paper-h);
+  /* Tuck the paper's ends under the rollers. */
+  margin: -3px 0;
+  color: var(--guide-ink);
+  /* Parchment: edge darkening, a couple of old stains, and a warm cream body. */
+  background:
+    radial-gradient(
+      120% 90% at 50% 45%,
+      transparent 55%,
+      color-mix(in srgb, var(--color-cedar-light) 24%, transparent) 100%
+    ),
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--color-lantern) 16%, transparent), transparent 38%),
+    radial-gradient(circle at 82% 68%, color-mix(in srgb, var(--color-cedar-light) 9%, transparent), transparent 32%),
+    radial-gradient(ellipse at 60% 8%, color-mix(in srgb, var(--color-lantern) 12%, transparent), transparent 45%),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-shoji) 88%, var(--color-cedar-light)) 0%,
+      var(--color-shoji) 18%,
+      color-mix(in srgb, var(--color-shoji) 94%, var(--color-lantern)) 60%,
+      color-mix(in srgb, var(--color-shoji) 86%, var(--color-cedar-light)) 100%
+    );
+  box-shadow:
+    inset 10px 0 14px -10px color-mix(in srgb, var(--color-cedar-dark) 45%, transparent),
+    inset -10px 0 14px -10px color-mix(in srgb, var(--color-cedar-dark) 45%, transparent);
+  /* Unrolls from the middle: GSAP tweens --unrolled from 0 (a line) to 1 (all of it). */
+  clip-path: inset(calc(50% - var(--unrolled, 1) * 50%) 0);
+}
+
+/* Paper grain: fine fractal noise, multiplied in. Black speckle, so no new color. */
+.guide__paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.9 0 0 0 -0.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.32;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+/* Two faded vermilion seals in the bottom-right corner, under the text. */
+.guide__stamps {
+  position: absolute;
+  right: 1.1rem;
+  bottom: 0.9rem;
+  z-index: 0;
+  width: 5.5rem;
+  height: 4.75rem;
+  color: var(--color-vermilion);
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.guide__stamp {
+  position: absolute;
+}
+
+.guide__stamp--large {
+  right: 0;
+  bottom: 0;
+  width: 3.9rem;
+  opacity: 0.42;
+  transform: rotate(-9deg);
+}
+
+.guide__stamp--small {
+  left: 0;
+  top: 0;
+  width: 2.7rem;
+  opacity: 0.3;
+  transform: rotate(14deg);
+}
+
+.guide__header,
+.guide__tabs,
+.guide__panel,
+.guide__footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Header and tabs ---------------------------------------------------------------------- */
+
+.guide__header {
+  flex: none;
+  padding: 1.75rem 1.5rem 0;
+  text-align: center;
+}
+
+.guide__title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  font-weight: 400;
+}
+
+.guide__kanji {
+  /* Letter-spacing trails the last character; pull it back so it stays centered. */
+  margin-right: -0.22em;
+  font-size: clamp(2.1rem, 8vw, 2.9rem);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0.22em;
+  color: var(--color-vermilion);
+}
+
+.guide__subtitle {
+  margin-right: -0.3em;
+  opacity: 0.72;
+}
+
+.guide__tabs {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.15rem 1.35rem;
+  margin: 1.2rem 1.5rem 0;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--guide-ink-faint);
+}
+
+.guide__tab {
+  padding: 0.4rem 0 0.4rem 0.3em;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--font-latin);
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0.5;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--guide-ink) 35%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.6em;
+  transition:
+    opacity 0.3s ease,
+    text-decoration-color 0.3s ease;
+}
+
+.guide__tab:hover {
+  opacity: 0.8;
+}
+
+.guide__tab[aria-selected='true'] {
+  opacity: 1;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+}
+
+.guide__tab:focus-visible,
+.guide__panel:focus-visible {
+  outline: 1px dashed color-mix(in srgb, var(--guide-ink) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.guide__panel:focus-visible {
+  outline-offset: -6px;
+}
+
+/* --- Panel -------------------------------------------------------------------------------- */
+
+.guide__panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Text fades out at the bottom edge, a hint that there is more to scroll. */
+  mask-image: linear-gradient(to bottom, black calc(100% - 1.25rem), transparent);
+  overscroll-behavior: contain;
+  padding: 1.35rem 2rem 1rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--guide-ink) 30%, transparent) transparent;
+}
+
+.guide__panel-body {
+  animation: guide-panel-in 0.4s ease-out both;
+}
+
+@keyframes guide-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.guide__panel p {
+  margin: 0;
+}
+
+.guide__eyebrow {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+  opacity: 0.65;
+}
+
+.guide__intro {
+  font-size: 1.075rem;
+  line-height: 1.5;
+}
+
+/* THE CASTLE */
+
+.guide__lore {
+  font-size: 1.125rem;
+  line-height: 1.55;
+}
+
+.guide__lore::first-letter {
+  float: left;
+  padding: 0.06em 0.1em 0 0;
+  font-size: 3.7em;
+  font-weight: 500;
+  line-height: 0.8;
+  color: var(--color-vermilion);
+}
+
+.guide__panel .guide__inside {
+  margin-top: 1.4rem;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.guide__panel .guide__no-exit {
+  margin-top: 1.4rem;
+  font-size: 1.25rem;
+  font-style: italic;
+  text-align: center;
+  opacity: 0.85;
+}
+
+/* MOVING */
+
+.guide__keys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.75rem;
+}
+
+.guide__key-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide__key-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.guide__caps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.guide__kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.85rem;
+  height: 1.85rem;
+  padding: 0 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--guide-ink) 40%, transparent);
+  border-bottom-width: 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-shoji) 80%, var(--color-lantern));
+  color: var(--guide-ink);
+  font-family: var(--font-latin);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Word caps (SCROLL, SPACE…) get the label treatment, spacing balanced on both sides. */
+.guide__kbd--word {
+  padding: 0 calc(0.6rem - 0.2em) 0 0.6rem;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.guide__slash {
+  font-size: 0.9rem;
+  opacity: 0.45;
+}
+
+.guide__key-desc {
+  font-size: 1.02rem;
+  line-height: 1.35;
+}
+
+.guide__panel .guide__note {
+  margin-top: 1.4rem;
+  font-size: 0.98rem;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* HIDDEN ONES */
+
+.guide__slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.2rem 0.75rem;
+  margin: 1.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide__slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.guide__slot-mark {
+  display: grid;
+  place-items: center;
+  width: clamp(3.25rem, 14vw, 4.25rem);
+  aspect-ratio: 1;
+  border: 1px dashed color-mix(in srgb, var(--guide-ink) 45%, transparent);
+  border-radius: 50%;
+  font-size: 1.7rem;
+  color: color-mix(in srgb, var(--guide-ink) 55%, transparent);
+}
+
+.guide__slot--found .guide__slot-mark {
+  border: 2px solid var(--color-vermilion);
+  color: var(--color-vermilion);
+}
+
+.guide__slot-number,
+.guide__panel .guide__count {
+  /* Cormorant's old-style 1 looks like a dotless i in small caps text. */
+  font-variant-numeric: lining-nums;
+}
+
+.guide__slot-number {
+  margin-right: -0.3em;
+  opacity: 0.7;
+}
+
+.guide__panel .guide__count {
+  margin-top: 1.4rem;
+  margin-right: -0.3em;
+  text-align: center;
+  opacity: 0.65;
+}
+
+.guide__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* SIGNS */
+
+.guide__omens {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin: 1.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide__omen {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.guide__omen-glyph {
+  padding-top: 0.05rem;
+  font-size: 1.85rem;
+  line-height: 1;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.guide__omen-name {
+  margin: 0;
+  font-weight: 500;
+}
+
+.guide__panel .guide__omen-meaning {
+  margin-top: 0.3rem;
+  font-size: 1.02rem;
+  line-height: 1.4;
+}
+
+/* --- Footer ------------------------------------------------------------------------------- */
+
+.guide__footer {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  padding: 0.85rem 1.5rem 1.6rem;
+}
+
+.guide__accept {
+  padding: 0.95rem 1.6rem 0.95rem calc(1.6rem + 0.3em);
+  border: 0;
+  border-radius: 0;
+  background: var(--color-vermilion);
+  color: var(--color-shoji);
+  font-family: var(--font-latin);
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--color-vermilion) 60%, var(--color-void));
+  transition:
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.guide__accept:hover,
+.guide__accept:focus-visible {
+  background: color-mix(in srgb, var(--color-vermilion) 85%, var(--color-lantern));
+  box-shadow:
+    0 2px 0 color-mix(in srgb, var(--color-vermilion) 60%, var(--color-void)),
+    0 0 18px color-mix(in srgb, var(--color-vermilion) 35%, transparent);
+}
+
+.guide__accept:focus-visible {
+  outline: 1px solid var(--guide-ink);
+  outline-offset: 3px;
+}
+
+.guide__accept:active {
+  transform: translateY(1px);
+}
+
+/* --- Small screens ------------------------------------------------------------------------ */
+
+@media (max-width: 30rem) {
+  .guide__keys {
+    grid-template-columns: 1fr;
+  }
+
+  .guide__panel {
+    padding: 1.1rem 1.25rem 0.75rem;
+  }
+
+  .guide__tabs {
+    gap: 0.1rem 0.9rem;
+    margin: 1rem 1rem 0;
+  }
+
+  .guide__stamps {
+    transform: scale(0.75);
+    transform-origin: bottom right;
+  }
+}
+
+/* Short screens (landscape phones): tighten the header so the panel keeps some room. */
+@media (max-height: 34rem) {
+  .guide__scroll {
+    margin-top: 0.75rem;
+  }
+
+  .guide__header {
+    padding-top: 1rem;
+  }
+
+  .guide__title {
+    flex-direction: row;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  .guide__kanji {
+    font-size: 1.6rem;
+  }
+
+  .guide__tabs {
+    margin-top: 0.6rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .guide__footer {
+    padding: 0.5rem 1.5rem 0.9rem;
+  }
+
+  .guide__accept {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide__panel-body {
+    animation: none;
+  }
+}

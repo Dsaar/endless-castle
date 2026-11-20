@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
-import { Leva, monitor, useControls } from 'leva'
+import { Leva, button, monitor, useControls } from 'leva'
 import { onFootstep } from '../state/footsteps'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
+import { useFigureStore } from '../state/useFigureStore'
+import { useGameStore } from '../state/useGameStore'
 import { usePlayerStore } from '../state/usePlayerStore'
 
 const readProgress = () => usePlayerStore.getState().progress
@@ -71,6 +73,17 @@ export default function DevPanel() {
     'progress (m)': monitor(readProgress, { interval: 50 }),
     'speed (m/s)': monitor(readSpeed, { graph: true, interval: 30 }),
     footsteps: monitor(readFootsteps, { interval: 100 }),
+  })
+
+  // Until the figures exist in the world: mark them found by hand to test the guide's slots.
+  useControls('Guide', {
+    open: button(() => useGameStore.getState().openGuide()),
+    'find a figure': button(() => {
+      const { found, markFound } = useFigureStore.getState()
+      const next = found.indexOf(false)
+      if (next >= 0) markFound(next)
+    }),
+    'reset figures': button(() => useFigureStore.getState().resetFound()),
   })
 
   return <Leva titleBar={{ title: 'Dev' }} />

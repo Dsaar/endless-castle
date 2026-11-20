@@ -8,6 +8,12 @@
   touch-action: none;
   cursor: grab;
   animation: castle-canvas-in 1.8s ease-out both;
+  transition: filter 0.9s ease;
+}
+
+/* While the guide scroll is open: the castle sinks back, dim and out of focus. */
+.castle-canvas--dimmed {
+  filter: brightness(0.4) blur(6px);
 }
 
 .castle-canvas:active {
@@ -26,5 +32,6 @@
 @media (prefers-reduced-motion: reduce) {
   .castle-canvas {
     animation: none;
+    transition: none;
   }
 }

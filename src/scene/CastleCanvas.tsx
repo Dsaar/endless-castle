@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import Atmosphere from './Atmosphere'
 import DriftingMotes from './DriftingMotes'
@@ -6,15 +7,25 @@ import Player from './Player'
 import PostEffects from './PostEffects'
 import { CANVAS_DPR, GL_OPTIONS } from './renderer'
 import Starfield from './Starfield'
+import { useGameStore } from '../state/useGameStore'
 import Gate from '../world/segments/Gate'
 import { INTRO_START } from '../world/segments/gate/layout'
 import { GATE_PATH } from '../world/segments/gate/path'
 import './CastleCanvas.css'
 
-/** The full-screen WebGL layer. Sits behind every HTML overlay. */
+/** The full-screen WebGL layer. Sits behind every HTML overlay. Dims and blurs while the guide is open. */
 export default function CastleCanvas() {
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // Toggled with a class, not React state, so opening the guide doesn't re-render the scene.
+  useEffect(() => {
+    const apply = (dimmed: boolean) => rootRef.current?.classList.toggle('castle-canvas--dimmed', dimmed)
+    apply(useGameStore.getState().guideOpen)
+    return useGameStore.subscribe((s) => apply(s.guideOpen))
+  }, [])
+
   return (
-    <div className="castle-canvas" aria-hidden="true">
+    <div ref={rootRef} className="castle-canvas" aria-hidden="true">
       <Canvas
         dpr={CANVAS_DPR}
         gl={GL_OPTIONS}

@@ -50,9 +50,21 @@ function isTyping(target: EventTarget | null) {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }
 
-/** Can the player act yet? Input is ignored until the intro camera has arrived. */
+/** Can the player act? Not until the intro camera has arrived, and not while the guide is open. */
 function canMove() {
-  return useGameStore.getState().introComplete
+  const game = useGameStore.getState()
+  return game.introComplete && !game.guideOpen
+}
+
+/**
+ * The first attempt to walk at the gate opens the guide instead (and is swallowed).
+ * Returns whether this walk should go ahead.
+ */
+function allowWalk() {
+  const game = useGameStore.getState()
+  if (game.guideSeen) return true
+  game.openGuide()
+  return false
 }
 
 /**
@@ -61,6 +73,8 @@ function canMove() {
  * - Mouse drag on `element` looks around; a touch swipe walks (vertical) or looks (horizontal),
  *   and a two-finger drag always looks.
  * - On devices with a fine hover pointer, the mouse position feeds a subtle look-around.
+ * - The first walk opens the guide. While it is open, everything here is ignored, held keys
+ *   are released and drags are dropped.
  */
 export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
   // One mutable object for the lifetime of the component, read by Player's frame loop.
@@ -84,16 +98,17 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return
+      // While the guide is open, keys belong to it (Space and arrows work its buttons and tabs).
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || useGameStore.getState().guideOpen) return
       if (FORWARD_KEYS.has(e.code) || BACK_KEYS.has(e.code)) {
         e.preventDefault()
-        if (!canMove()) return
+        if (!canMove() || (!pressed.has(e.code) && !allowWalk())) return
         pressed.add(e.code)
         updateHeld()
       } else if (e.code === 'Space') {
         e.preventDefault()
         // One stride per press; holding Space doesn't auto-repeat.
-        if (e.repeat || !canMove()) return
+        if (e.repeat || !canMove() || !allowWalk()) return
         walkBy(e.shiftKey ? -STRIDE : STRIDE)
       }
     }
@@ -109,7 +124,7 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
     const onWheel = (e: WheelEvent) => {
       // Also blocks the browser's overscroll and swipe-back gestures.
       e.preventDefault()
-      if (e.ctrlKey || !canMove()) return // ctrl+wheel is a trackpad pinch
+      if (e.ctrlKey || !canMove() || !allowWalk()) return // ctrl+wheel is a trackpad pinch
       walkBy(wheelPixels(e) * WHEEL_METERS_PER_PIXEL)
     }
 
@@ -187,6 +202,8 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
         if (Math.hypot(ox, oy) < TOUCH_SLOP) return
         gesture = Math.abs(oy) > Math.abs(ox) ? 'walk' : 'look'
         state.dragging = gesture === 'look'
+        // The first swipe to walk opens the guide, which cancels this gesture (see below).
+        if (gesture === 'walk' && !allowWalk()) return
       }
 
       if (gesture === 'look') {
@@ -224,7 +241,7 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
 
     // --- Mouse position look-around (desktop) -------------------------------------------
     const onHover = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse') return
+      if (e.pointerType !== 'mouse' || useGameStore.getState().guideOpen) return
       state.hoverX = (e.clientX / window.innerWidth) * 2 - 1
       state.hoverY = 1 - (e.clientY / window.innerHeight) * 2
     }
@@ -237,6 +254,20 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
       releaseKeys()
       onHoverLeave()
     }
+
+    // When the guide opens, let go of everything: keys, drags, swipes and the look-around.
+    const dropAll = () => {
+      onBlur()
+      touches.clear()
+      mouseId = -1
+      gesture = 'pending'
+      state.dragging = false
+      state.yawDelta = 0
+      state.pitchDelta = 0
+    }
+    const unsubscribeGuide = useGameStore.subscribe((s, prev) => {
+      if (s.guideOpen && !prev.guideOpen) dropAll()
+    })
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -252,6 +283,7 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
     }
 
     return () => {
+      unsubscribeGuide()
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)

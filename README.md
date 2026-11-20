@@ -36,7 +36,13 @@ npm run lint     # oxlint
 | Looking      | Mouse drag                  | Look around (drag the world: drag right to turn left). Limited to ±60° sideways, 30° up, 40° down. |
 | Looking      | Touch: swipe sideways, or two-finger drag | Look around. A one-finger swipe picks walk or look by its first direction. |
 | Looking      | Move the mouse (desktop)    | The view leans up to 4° toward the pointer |
+| The Gate     | First scroll (or W / ↑ / Space / swipe) | Opens the guide scroll instead of walking. Happens once. |
+| Guide        | **GUIDE** button, top left  | Opens the guide again |
+| Guide        | Click a tab, or ← → / Home / End on the tabs | Switch between The Castle, Moving, Hidden Ones and Signs |
+| Guide        | Esc, or **Accept the summons** | Roll the scroll back up |
+| Guide        | Tab / Shift+Tab             | Move between the tabs, the text and the button (focus stays inside the scroll) |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
+| Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
 | Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
 | Kit view | Piece names at the bottom, or ← → | Glide the camera to the next piece |
 
@@ -184,6 +190,45 @@ Scroll-driven walking along a path, in `src/scene/Player.tsx`.
 9. In DevTools device mode with touch: swiping up walks, a quick flick carries on a little, swiping down walks back, and a sideways swipe or two-finger drag looks around.
 10. With reduced motion turned on, the walk has no bob.
 
+### The guide scroll
+
+A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It opens by itself the first time you try to walk at the gate, and later from the **GUIDE** button.
+
+- **Look:** parchment from layered CSS gradients (edge darkening, a few warm stains, a cream body) with fine fractal noise multiplied over it. Cedar rollers top and bottom with brass end caps, and a cord up to a brass nail above the top roller. Two faded vermilion seals (`src/ui/guide/InkStamp.tsx`, SVG with turbulence filters for rough edges and dry patches) sit in the bottom-right corner. All colors are palette variables or blends of two.
+- **Unrolling** (GSAP, 0.9 s, `power2.inOut`): the rollers start together in the middle and move apart while the paper is revealed between them. The paper's `clip-path` is driven by one CSS variable (`--unrolled`, 0 to 1) and the rollers by `transform`, so nothing reflows. The grain on the rollers slides as they move, so they look like they turn. Closing plays the same move back to the middle, then fades out. Opening or closing partway through picks up from where the scroll is.
+- **Content** (all the words are in `src/ui/guide/content.ts`):
+  - 無限城 in vermilion, with **THE ENDLESS CASTLE · A GUIDE** under it.
+  - Four underlined tabs. The selected one is darker with a heavier underline.
+  - **The Castle:** a lore paragraph with a vermilion drop cap, a **WHAT LIES INSIDE** line of area names separated by middle dots, and *There is no exit.*
+  - **Moving:** two columns of key caps (SCROLL / W / ↑, SPACE, S / ↓, A D ← →, Q E, DRAG, CLICK, ESC), each with a one-line description, plus a note for touch screens. A D ← →, Q E and CLICK describe controls that later steps will add (junctions in step 12, the figures in step 14). They don't do anything yet.
+  - **Hidden Ones:** six numbered slots read from `useFigureStore`. Unfound slots show **?** in a dashed circle and found ones show 見 in a vermilion ring, with a count below.
+  - **Signs:** the four omens (the guttering lantern, a bell with no bell, a shadow on the paper, the vermilion door) and what each one means. Step 15 will make them happen in the world.
+  - **ACCEPT THE SUMMONS**, a vermilion rectangular button, rolls it up.
+- **While it is open:**
+  - `guideOpen` is set in `useGameStore`.
+  - Player input is paused: wheel, keys, drag and swipe are ignored, held keys are released, and any drag in progress is dropped.
+  - The canvas dims and blurs (`.castle-canvas--dimmed`, toggled from a store subscription, so the 3D scene never re-renders). The intro text sinks back with it.
+  - The **GUIDE** button hides.
+  - Input comes back as soon as the scroll starts rolling up.
+- **The first time:** in `usePlayerInput`, the first attempt to walk (wheel, W / ↑, Space, or a vertical swipe) opens the guide and is swallowed, so you don't move. After that, walking works normally.
+- **Accessibility:**
+  - It is a modal dialog with focus kept inside.
+  - The tabs follow the ARIA tabs pattern: arrow keys, Home and End.
+  - Focus goes to the selected tab on open, and back to the **GUIDE** button (if that opened it) on close.
+  - With reduced motion, it fades in and out without unrolling.
+- **Small screens:** the paper is at most 34 rem wide and fits the viewport with a 16 px gutter. The panel scrolls inside the paper and fades at its bottom edge. Below 480 px wide, the key caps stack in one column. On short landscape screens, the header shrinks to one row.
+
+**How to test:** run `npm run dev`, click **Enter the castle**, wait for the intro to finish, and check that:
+
+1. The first scroll doesn't move you (**Dev → Player → progress** stays at 0). Instead, the two rollers appear together in the middle and unroll the paper over about a second, while the castle behind dims and blurs.
+2. Scrolling, holding **W** or dragging while the scroll is open does nothing.
+3. The four tabs switch content, by click or with ← → once a tab has focus. **The Castle** has the red drop cap and *There is no exit.* at the end.
+4. In **Dev → Guide**, click **find a figure** twice: on **Hidden Ones**, slots 1 and 2 turn into vermilion rings, and the count reads **2 of 6 found**.
+5. **Esc** rolls the scroll back up into the middle and the castle comes back into focus. Scrolling now walks.
+6. The **GUIDE** button (top left) opens it again. **Accept the summons** closes it, and focus returns to the button.
+7. In DevTools device mode at 375 × 667 and 667 × 375: the scroll fits with no sideways scrolling, and the panel scrolls inside the paper.
+8. With reduced motion turned on, the scroll fades in and out instead of unrolling.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern, with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -212,7 +257,8 @@ src/
     random.ts           Seeded PRNG (mulberry32) for stable procedural layouts
     math.ts             clamp, smoothstep, damp, smoothDamp (critically damped spring)
   state/
-    useGameStore.ts     zustand store (soundEnabled, introComplete)
+    useGameStore.ts     zustand store (soundEnabled, introComplete, guideOpen, guideSeen)
+    useFigureStore.ts   Which of the six hidden figures have been found
     usePlayerStore.ts   Progress along the path: target, smoothed progress, speed, path length, walkBy()
     footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
@@ -222,9 +268,20 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel for fog and bloom, plus player monitors (dev builds only)
+    DevPanel.tsx        leva panel for fog and bloom, player monitors and guide / figure buttons (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
+    GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
+    GuideScroll.css     Parchment, rollers, brass caps, stamps, tab content
+    GuideButton.tsx     GUIDE button, top left, once the guide has been seen
+    GuideButton.css
+    guide/
+      content.ts        Every word in the guide: tabs, lore, areas, key bindings, omens
+      CastlePanel.tsx   The Castle tab
+      MovingPanel.tsx   Moving tab (key caps in two columns)
+      HiddenOnesPanel.tsx  Hidden Ones tab (six slots)
+      SignsPanel.tsx    Signs tab (the four omens)
+      InkStamp.tsx      Faded vermilion seal (SVG with rough, dry-ink filters)
     KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
     KitOverlay.css
   scene/                3D components (R3F)
@@ -286,7 +343,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 4. Building kit
 - [x] 5. The Gate and the intro
 - [x] 6. Movement
-- [ ] 7. The guide scroll
+- [x] 7. The guide scroll
 - [ ] 8. The endless segment system
 - [ ] 9. The HUD
 - [ ] 10. The Fall

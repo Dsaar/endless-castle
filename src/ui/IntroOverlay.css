@@ -96,3 +96,18 @@
     opacity: 0.5;
   }
 }
+
+/* Sinks back with the canvas while the guide scroll is open (the canvas gets this class). */
+.intro-overlay {
+  transition: filter 0.9s ease;
+}
+
+:root:has(.castle-canvas--dimmed) .intro-overlay {
+  filter: brightness(0.4) blur(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-overlay {
+    transition: none;
+  }
+}
