@@ -1,5 +1,6 @@
 import type { Vec3 } from '../../../scene/kit/types'
 import { EYE_HEIGHT } from '../../../scene/player/tuning'
+import { THRESHOLD_WIDTH } from '../threshold/layout'
 
 /**
  * Dimensions of the opening segment, in meters. The player faces -Z: the bridge starts at
@@ -36,14 +37,22 @@ export const UPPER_TOP = 6.3
 
 /** Where the walk starts (z): the bridge head, where the intro camera comes to rest. */
 export const PATH_START_Z = 1.5
-/** Where the walk ends (z): the foot of the bridge, far enough back that the whole doorway fits in view. */
-export const PATH_END_Z = GATE_Z + 3.4
-/** Control points of the walking path at floor level (see `path.ts`). */
+/**
+ * Where the Gate segment ends (z): the back edge of the landing, behind the gate house.
+ * The first Threshold attaches here, through a gap in the back railing as wide as it is.
+ */
+export const GATE_EXIT_Z = BRIDGE_END_Z - LANDING_DEPTH
+/** Width of the gap in the landing's back railing: the Threshold's width. */
+export const LANDING_EXIT_WIDTH = THRESHOLD_WIDTH
+/** The walk at floor level: straight across the bridge, through the gate, to the landing's back edge. */
 export const GATE_PATH_POINTS: Vec3[] = [
   [0, 0, PATH_START_Z],
-  [0, 0, (PATH_START_Z + PATH_END_Z) / 2],
-  [0, 0, PATH_END_Z],
+  [0, 0, GATE_EXIT_Z],
 ]
+/** Progress (meters along the walk) at which the gate doors swing open: about 9 m before them. */
+export const DOORS_OPEN_AT = PATH_START_Z - GATE_Z - 9
+/** Progress over which the haze behind the roof fades out, before the walk passes through it. */
+export const BACK_GLOW_FADE: [number, number] = [PATH_START_Z - GATE_Z - 4, PATH_START_Z - GATE_Z + 8]
 
 /** The intro dolly: from far back over the void to the start of the path, at eye height. */
 export const INTRO_START: Vec3 = [0, 2.6, 24]

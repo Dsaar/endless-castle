@@ -12,6 +12,7 @@ import ShojiPanel from './kit/ShojiPanel'
 import TatamiFloor from './kit/TatamiFloor'
 import WoodBeam from './kit/WoodBeam'
 import KitCameraRig from './KitCameraRig'
+import LightPool from './lighting/LightPool'
 import { KIT_EXHIBITS, KIT_SPACING } from './kitExhibits'
 import PostEffects from './PostEffects'
 import { CANVAS_DPR, GL_OPTIONS } from './renderer'
@@ -44,6 +45,8 @@ export default function KitView() {
           <Starfield />
           {/* A whisper of fill so the unlit sides of pieces don't vanish entirely. */}
           <hemisphereLight args={[palette.lantern, palette.void, 0.12]} />
+          {/* Each exhibit's lantern borrows one of the pooled lights. */}
+          <LightPool />
 
           {/* 0: beam */}
           <WoodBeam position={[at(0), 1.3, 0]} size={[3, 0.24, 0.24]} />

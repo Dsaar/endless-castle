@@ -29,6 +29,7 @@ npm run lint     # oxlint
 | Title screen | Click **Enter in silence**  | Enter with sound off                        |
 | Title screen | Tab / Enter / Space         | Move between the buttons and choose one (the main button has focus on load) |
 | The Gate     | (none)                      | The intro plays by itself. Walking and looking unlock when the camera arrives. |
+| The Gate     | Walk toward the doors       | About 9 m out, the heavy doors swing open. Walk through the gate house and on into the castle. |
 | Walking      | Mouse wheel / trackpad scroll | Walk forward (down) or back (up). Scroll faster to run, up to a top speed. |
 | Walking      | W / S, ↑ / ↓ (hold)         | Walk forward / back at a steady pace |
 | Walking      | Space / Shift+Space         | One stride (1.6 m, two steps) forward / back |
@@ -43,6 +44,9 @@ npm run lint     # oxlint
 | Guide        | Tab / Shift+Tab             | Move between the tabs, the text and the button (focus stays inside the scroll) |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
+| Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
+| Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind (the 3 already built ahead come first: skip 4 times to reach it) |
+| Castle        | `?seed=123` in the URL      | Build the castle from that seed (the same seed always builds the same castle). Without it, every visit builds a new one. |
 | Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
 | Kit view | Piece names at the bottom, or ← → | Glide the camera to the next piece |
 
@@ -98,35 +102,52 @@ Procedural pieces that the castle will be built from, in `src/scene/kit/`. Each 
 | `Post` | `[width, height, depth]` | | Stands on `position`; grain runs up the post |
 | `FloorPlanks` | `[width, depth]` | `plankWidth` | Boards along X with staggered joints and 7 mm gaps over a dark underlay. Low roughness, so lanterns leave hot spots. |
 | `ShojiPanel` | `[width, height]` | `lit`, `kickboard` | Cedar frame, kumiko lattice, and a paper plane in the middle of the frame (reads from both sides). `lit` paper glows and blooms; unlit paper is lit only by the scene. |
-| `Lantern` | uniform scale | `kind` (`'hanging'` or `'standing'`), `cord`, `intensity`, `flicker`, `phase` | Emissive paper and one point light (distance 6, decay 2). A flickering lantern varies its light and paper glow together; `phase` keeps neighbours out of step. |
+| `Lantern` | uniform scale | `kind` (`'hanging'` or `'standing'`), `cord`, `intensity`, `flicker`, `phase` | Emissive paper and a warm light (distance 6, decay 2) borrowed from the light pool (see **The endless castle**). A flickering lantern varies its light and paper glow together; `phase` keeps neighbours out of step. |
 | `Railing` | `[height, postWidth]` | `length` | Evenly spaced posts, a wide top rail and a lower rail; end posts rise above the rail with a cap |
-| `TatamiFloor` | `[width, depth]` | | Rounded to ~0.91 m half-mat cells. Mats follow the traditional rule (no point where four mats meet), with dark cloth borders on the long sides only. A 3 × 3 cell room gets the classic 4.5-mat pinwheel. |
+| `TatamiFloor` | `[width, depth]` | `glow` | Rounded to ~0.91 m half-mat cells. Mats follow the traditional rule (no point where four mats meet), with dark cloth borders on the long sides only. A 3 × 3 cell room gets the classic 4.5-mat pinwheel. |
 | `Roof` | `[width, rise, length]` | | A gabled temple roof: a concave profile with a small upturn at the eave tips, extruded along the ridge and then bent so the corners sweep up. Tiles on top, cedar underneath and on the gable ends, plus a ridge cap with end blocks. |
+| `HangingScroll` | `[width, height]` | | A vermilion silk mounting round a pale paper panel, a thin top rod and a heavier bottom roller, on a short cord. `position` is the hook. Faces +Z. |
+
+`TatamiFloor`'s `glow` makes the mats faintly self-lit (the Threshold's runner).
+
+Instanced and merged versions, for pieces that repeat. Each takes a list of placements (`position`, plus optional `yaw`, `pitch` and `scale`):
+
+| Piece | What it draws | Draw calls |
+| ----- | ------------- | ---------- |
+| `KitInstances` | Any shared geometry and material, once per placement. Matrices are written once; the bounding sphere covers every copy. | 1 |
+| `BoxInstances` | Identical cedar boxes (posts, planks, battens, rails, brackets, cords) with the kit's world-scaled grain. `anchor="base"` for posts. Any material. | 1 |
+| `MergedBoxes` | One-off boxes of all sizes (beams, sills, slabs, fascias) merged into one mesh. Any material (cedar by default, vermilion lacquer for the corridor portals). | 1 |
+| `ShojiInstances` | A wall's worth of identical shoji panels: frames, lit paper, unlit paper | 3 |
+| `LanternInstances` | A row of identical lanterns: frames, paper, cords. Each flickers out of step through a per-instance `instanceGlow` attribute read by a patched paper material, and registers its light with the pool. | 3 |
+
+New shared materials: vermilion lacquer, vermilion scroll silk, earthen plaster (tsuchikabe), glowing tatami, and the instanced lantern paper.
 
 How it stays cheap:
 
 - **Shared textures** (`textures.ts`), drawn once on canvas: cedar grain (long wavy streaks and pores), tatami rush, washi paper fibres and roof tiles. All tile seamlessly.
 - **Shared materials** (`materials.ts`): one per surface type, created once and reused by every piece. The only per-instance material is the paper of a flickering lantern, a clone that shares the same shader program.
+- **Instancing** for repeated pieces (see the table above), and **merging** for one-off boxes: a whole segment is 10 to 20 draw calls whatever its length.
 - **Merged geometry**: each piece's static boxes are merged into one mesh per material (all floorboards are one draw call, all tatami mats another, a whole railing one). Lantern frames are built once per kind and shared by every lantern.
 - **World-scaled UVs** (`texturedBox` in `geometry.ts`): texture density stays constant whatever the size, and the grain follows each piece's long axis.
-- Derived tones (straw, tile charcoal, border cloth) are blends of two palette colors (`src/lib/color.ts`), so no new hex values.
+- Derived tones (straw, tile charcoal, border cloth, plaster) are blends of two palette colors (`src/lib/color.ts`), so no new hex values.
+- **No real lights in the kit**: lanterns register light sources with a fixed pool of point lights (`src/scene/lighting/`), so mounting and unmounting pieces never changes the light count and never recompiles a shader.
 
 ### The Gate and the intro
 
-The opening scene, built from the kit in `src/world/segments/Gate.tsx`. The player faces -Z. All dimensions live in `src/world/segments/gate/layout.ts`.
+The opening scene, built from the kit in `src/world/segments/Gate.tsx`. It is segment 0 of the endless castle (see below). The player faces -Z. All dimensions live in `src/world/segments/gate/layout.ts`.
 
 - **Bridge** (`gate/Bridge.tsx`): an 18 m long, 3 m wide bridge over the void. Boards run across it on two stringers. It has railings on both sides and pairs of piers every few meters that drop into the fog. A pair of standing lanterns at its head gives the first pool of warm light.
-- **Landing** (`gate/Landing.tsx`): a 16 × 9 m platform with deep edge beams, railings around it and four tall corner piers.
+- **Landing** (`gate/Landing.tsx`): a 16 × 9 m platform with deep edge beams, railings around it and four tall corner piers. The back railing leaves a 4 m gap where the first Threshold carries on.
 - **Gate house** (`gate/GateHouse.tsx`): a two-story gate.
-  - Lower story: closed central doors, with glowing shoji and lit transoms on both sides.
+  - Lower story: heavy central doors, with glowing shoji and lit transoms on both sides. A doorway through the back wall, behind the doors, leads on.
   - Two large hanging lanterns, either side of the doors.
   - A balcony with railings and bracket beams, then an upper story that is lit shoji all across.
   - A band of stacked beams under the large curved kit `Roof`, which has swept-up corners.
   - A hidden fill light, standing in for the upper shoji's glow, lights the balcony and the eaves soffit.
-- **Sliding doors** (`gate/SlidingDoors.tsx`): two heavy board leaves on a sill and head rail. A bright plane behind them shows through the center slit, the gaps between boards and the gaps at the top and bottom, and those lines bloom. A small spill light and an additive streak on the floor (`gate/DoorLightSpill.tsx`, a canvas mask) carry the leak out onto the landing.
+- **Gate doors** (`gate/GateDoors.tsx`): two heavy board leaves on a sill and head rail. A bright plane behind them shows through the center slit, the gaps between boards and the gaps at the top and bottom, and those lines bloom. A small spill light and an additive streak on the floor (`gate/DoorLightSpill.tsx`, material and canvas mask in `gate/doorSpillMaterial.ts`) carry the leak out onto the landing. When the player is about 9 m away, both leaves swing inward on their outer hinges (GSAP, 2.6 s, one leaf a beat behind the other) while the light behind them and the streak fade away. With reduced motion, or if the Gate remounts behind a player walking back, they are simply open.
 - **Shoji bays** (`gate/ShojiBay.tsx`): a row of `ShojiPanel`s filling a bay, with an optional dividing beam and a lit transom above it.
-- **Back glow** (`gate/GateBackGlow.tsx`): a faint warm haze far behind the gate (additive, outside the fog). It lifts the black just enough for the roof's curve to read as a silhouette.
-- **Distant pagodas** (`src/scene/Pagoda.tsx`): two five-story towers, far out to the left and right.
+- **Back glow** (`gate/GateBackGlow.tsx`): a faint warm haze far behind the gate (additive, outside the fog). It lifts the black just enough for the roof's curve to read as a silhouette. It fades out as the player walks through the gate, long before the walk reaches its plane.
+- **Distant pagodas** (`src/scene/Pagoda.tsx`, placed by `src/world/Backdrop.tsx`, which never unmounts): two five-story towers, far out to the left and right.
   - Square stories narrow toward the top. Each has a lathed, squared-off hip roof with upturned corners and a faint warm underside, and a spire with nine rings crowns the tower.
   - Every story has a grid of windows on all four sides, most of them lit, chosen by a seeded random pattern.
   - Each tower costs three draw calls: the body, the roofs and the windows (instanced). All three use unlit materials.
@@ -134,7 +155,7 @@ The opening scene, built from the kit in `src/world/segments/Gate.tsx`. The play
   - It swaps the normal fog for a thinner one: the scene's live `FogExp2` density × 0.5, in the same color.
   - It adds a fog bank by world height, so the pagodas stay faintly visible and their bases sink into the fog.
   - Near objects keep the normal fog.
-- **Lights:** 6 point lights (2 bridge lanterns, 2 gate lanterns, the door spill and the upper fill; none on the pagodas) plus a very faint warm hemisphere fill.
+- **Lights:** 6 light sources (2 bridge lanterns, 2 gate lanterns, the door spill and the upper fill; none on the pagodas), lit through the light pool, plus a very faint warm hemisphere fill (in `Backdrop`).
 - **Intro** (`src/scene/IntroCameraRig.tsx`): after **Enter**, the camera starts 24 m back over the void, slightly high and tilted down. It dollies to the start of the bridge at eye height over 5 s (GSAP, `power2.out`). The move starts after a few warm-up frames, so shader compilation doesn't eat into it. When it arrives, it sets `introComplete` in `useGameStore`.
 - **Intro text** (`src/ui/IntroOverlay.tsx`): once `introComplete` is set, **YOU HAVE BEEN SUMMONED.** fades in at the center (uppercase, widely letter-spaced, opening up slightly as it appears). Then a small **SCROLL TO ENTER** label fades in below it, over a thin vertical line that keeps drawing downward and fading. A soft dark pool behind the text keeps it readable over the lit shoji.
 - **Reduced motion:** the camera starts at the bridge and the text appears without animation.
@@ -151,13 +172,14 @@ The opening scene, built from the kit in `src/world/segments/Gate.tsx`. The play
 4. Left and right, far off: the pagodas show grids of lit windows and a few dark ones. Their lower stories fade into fog.
 5. After the camera stops, **YOU HAVE BEEN SUMMONED.** fades in, then **SCROLL TO ENTER** with its pulsing line. Scrolling walks you onto the bridge and the text fades away.
 6. With reduced motion turned on in the OS, the scene opens at the bridge and the text is already there.
+7. Walk on across the bridge: about 9 m before the doors they swing slowly inward, the light behind them fades, and the gate house's back doorway shows the Threshold's lanterns beyond. The haze behind the roof fades as you go through.
 
 ### Movement
 
 Scroll-driven walking along a path, in `src/scene/Player.tsx`.
 
-- **The path:** the world provides a `CatmullRomCurve3` at floor level. For the Gate it is `GATE_PATH` (`src/world/segments/gate/path.ts`, points in `layout.ts`). It runs straight from the bridge head, where the intro stops, to the foot of the bridge, about 3.4 m from the doors, so the whole doorway fits in view. It is 18.5 m long. The canvas passes it to `<Player path={…} />`.
-- **The store** (`src/state/usePlayerStore.ts`): `targetProgress` is where input wants you to be and `progress` is where you are, both in meters along the path. It also holds `speed` (m/s) and `pathLength`. `walkBy(meters)` moves the target. The target is kept between the start and the end of the path, and at most 8 m from the player, so a huge flick can't queue up a long run. Progress can never go below the start.
+- **The path:** the world provides a `WalkPath` (`src/scene/player/walkPath.ts`): a point at floor level for any distance along the walk. It is the endless castle's `WorldPath` (see below), which starts at the bridge head, where the intro stops, and runs on through every generated segment. The canvas passes it to `<Player path={…} />`.
+- **The store** (`src/state/usePlayerStore.ts`): `targetProgress` is where input wants you to be and `progress` is where you are, both in meters along the walk. It also holds `speed` (m/s) and the walkable stretch, `pathStart` … `pathEnd`, which the world keeps up to date. `walkBy(meters)` moves the target. The target is kept inside the walkable stretch, and at most 8 m from the player, so a huge flick can't queue up a long run. `jumpTo(progress)` (dev tools) teleports: the player snaps there without walking or footsteps.
 - **Input** (`src/scene/player/usePlayerInput.ts`):
   - Wheel, swipe and Space move the target straight away.
   - Held W / S / ↑ / ↓ push the target along at 1.5 m/s.
@@ -183,10 +205,10 @@ Scroll-driven walking along a path, in `src/scene/Player.tsx`.
 2. One wheel notch moves you about a step forward, with a gentle start and stop. Scrolling up at the start does nothing (you can't go behind the start).
 3. Scrolling steadily walks you across the bridge with a soft bob. Scrolling hard makes the speed graph in **Dev → Player** climb and flatten at about 3.6 m/s, the bob gets stronger, and when you stop scrolling you glide to a halt.
 4. Holding **W** or **↑** walks at a steady pace and **S** or **↓** walks back. **Space** takes one stride (two footsteps in the counter) and **Shift+Space** takes one back.
-5. At the end of the bridge you stop, with the whole doorway in view. Scrolling further does nothing.
+5. The walk doesn't stop at the doors: it carries on through the gate into the castle, and never ends.
 6. Dragging turns the view and stops at the limits. Start walking and the view eases back to center within about a second.
 7. Without dragging, moving the mouse to a screen edge leans the view slightly that way.
-8. The footstep counter goes up about every 0.8 m (about 23 steps over the whole path).
+8. The footstep counter goes up about every 0.8 m (about 23 steps across the bridge).
 9. In DevTools device mode with touch: swiping up walks, a quick flick carries on a little, swiping down walks back, and a sideways swipe or two-finger drag looks around.
 10. With reduced motion turned on, the walk has no bob.
 
@@ -229,9 +251,101 @@ A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It
 7. In DevTools device mode at 375 × 667 and 667 × 375: the scroll fits with no sideways scrolling, and the panel scrolls inside the paper.
 8. With reduced motion turned on, the scroll fades in and out instead of unrolling.
 
+### The endless castle
+
+Past the gate, the castle builds itself as you walk, one **segment** at a time, in `src/world/`.
+
+**Segments** (`segment.ts`). A `Segment` is one placed piece of the castle:
+
+- `id`, which is also its room number (the Gate is 0).
+- `kind`, `area` (e.g. *The Shoji Corridor*) and `kanji`.
+- `length`: how far the walk through it is.
+- `start` and `end` transforms: a position and a yaw (0 faces -Z, positive turns left).
+- `path`: the camera path at floor level, in world space.
+- `params`: its random variations.
+- `Component`: the React component that builds it in its local frame (start at the origin, facing -Z).
+
+A `SegmentDefinition` is a kind of segment:
+
+- `generate(rand, context)` picks a fresh copy's variations.
+- `plan(params)` gives its walk (control points) and its exit.
+- An optional `continues` / `follow` pair chains runs of nearly identical copies.
+
+`placeSegment` puts a plan at the previous segment's end.
+
+**The generator** (`WorldGenerator.ts`) builds the castle from a seed. Segment `id`'s variations come from `hash(seed, id)`, so a seed always builds the same castle. It starts with the Gate, and the first segment after it is always a Threshold. After that it picks a kind by weight (`segments/registry.ts`) and never picks the same kind twice in a row, except for Tatami Room runs. Each new segment's start is the previous one's end. `update(progress)`:
+
+- Generates ahead so that at least **3 segments and 32 m** of walk lie in front of the player (short rooms come in runs).
+- Keeps the window to mount: **1 segment behind** to 3+ ahead. The window grows as soon as it has to, but only shrinks once the player is 1.5 m past a boundary, so pacing back and forth over a boundary doesn't mount and unmount the same segment.
+- Remembers 24 more segments behind the window as data only (not mounted). Walking back remounts them exactly as they were, and you can't walk back past the oldest one.
+
+**Joining the paths** (`WorldPath.ts`). `WorldPath` chains every segment's path into one walk, addressed by distance from the bridge head. It is what `Player` walks along. Every plan starts at its origin heading -Z and ends heading along its exit yaw, with straight leads at both ends. So where two segments meet, the point and the tangent are the same: the camera's position, heading and pitch carry straight across the boundary. Checked over 3 km and five seeds: joints match to under 1e-12 m and 0.002°, and the heading never changes by more than 0.4° per 10 cm.
+
+**Mounting** (`World.tsx`, `SegmentView.tsx`). `World` listens to progress with `subscribe`, so it doesn't re-render every frame. It re-renders only when the window changes, mounts each segment in a group at its start transform, and unmounts the ones that leave. Mounting runs as a React transition. It also keeps `pathStart` / `pathEnd` in `usePlayerStore` and the location in `useWorldStore`.
+
+**The store** (`src/state/useWorldStore.ts`) changes only when you cross into another segment:
+
+- `area`, `kanji`, `kind`
+- `room` (the current segment's id) and `furthestRoom`
+- `segmentStart` / `segmentEnd`
+- `seed`
+- `forcedKind` (dev)
+
+Every segment counts as a room.
+
+**The five segment types** (`segments/<kind>/`: `layout.ts` turns params into placements, the component draws them, and `definition.ts` ties them together):
+
+| Segment | Kanji | What it is | Varies |
+| ------- | ----- | ---------- | ------ |
+| **The Threshold** | 敷居 | An open 4 m walkway in the void with no railings, standing lanterns along both edges, a glowing tatami runner down the middle and piers dropping away beneath. Sometimes a cedar frame over the far end. | Length 12–24 m, lantern spacing 2.4–3.6 m, lanterns paired or staggered, end frame or not |
+| **The Suspended Walkway** | 懸橋 | A narrow 1.6 m plank bridge that curves and arches. Planks and stringers follow its slope. It has rope rails, cords rising from the rails into the dark, lanterns on posts with arms reaching over the walk, and 2–4 floating pavilions around it. The only segment that turns. | Length 16–28 m, turn ±25° (steered so the castle never heads more than 50° off the Gate's direction), S-bend, arch up to 0.8 m, lantern spacing 3.5–5.5 m, lanterns paired or alternating |
+| **The Shoji Corridor** | 廊下 | An enclosed, straight 2.4 m hall of shoji with transoms, a board ceiling with battens, floorboards running along it for a long vanishing view, wall lanterns on brackets at eye level, 1–2 vermilion portals (lacquered posts, lintel and tie), and a roof outside | 9–17 bays of 1.82 m (16–31 m). Which walls are lit: both, left, right, alternating bays, sparse, or a dark stretch. Lantern every 2–3 bays, paired or alternating |
+| **The Open Gallery** | 縁側 | A veranda: shoji on one side, eave posts and a two-rail balustrade open to the void on the other, and a roof whose underside slopes up from the eave. Lanterns hang along the eave, and 1–2 pavilions float in the dark. | Which side the shoji is on, 8–14 bays, lit pattern, lantern every 1–2 bays |
+| **The Tatami Room** | 座敷 | A square room of tatami (4.55 or 5.46 m), shoji and plaster walls, floor lanterns in the corners, one hanging lantern and a vermilion hanging scroll. Its far doors (the middle two of four lit panels) slide open when you're 30% of the way in, onto the next room. That room is almost the same one: the scroll has moved and a lantern is missing. | Runs of 2–4 rooms. Room size, which wall halves are plaster, where the scroll hangs, whether there's a hanging lantern |
+
+Shared pieces:
+
+- `segments/shojiWall.ts`: the corridor and gallery wall (posts, sill, door head, panels, transoms) and the lit patterns.
+- `segments/common.ts`: the 1.82 m bay, pier pairs and lantern phases.
+- `pieces/FloatingPavilion.tsx`: a pavilion with nothing holding it up. It has struts and a keel dangling into the fog and shoji walls, mostly glowing. It drifts gently up and down and has no lights of its own.
+
+Every segment keeps its solid pieces inside its own length (end posts are pulled in, and the room's end walls sit 5 cm inside). So a neighbour's post never pokes through a closed door.
+
+**The light pool** (`src/scene/lighting/`). A castle lined with lanterns would need dozens of point lights, and every time a segment mounted or unmounted, the change in light count would recompile every lit shader. Instead:
+
+- Lanterns (and the Gate's door spill and fill light) register **light sources** (`lightSources.ts`, `PooledLight.tsx`).
+- `LightPool.tsx` owns **10 point lights**, mounted once. Each frame it hands them to the sources nearest the camera; sources ahead win over sources behind.
+- A light fades out as its source nears the edge of the chosen set, so a hand-over is never visible.
+- Flicker is computed with the same function and phase as the lantern's paper (`kit/flicker.ts`), so they pulse together.
+
+The shader count stays flat while you walk (19–20 in the dev panel).
+
+**Cost** (dev panel, whole frame including post-processing): about 120–150 draw calls on the walkways, galleries and corridors, up to about 195 in a long Tatami Room run (several short rooms mounted), and about 220 at the Gate, whose pieces aren't instanced.
+
+**Dev tools:**
+
+- **Dev → World** shows:
+  - the seed
+  - the renderer totals (draw calls, triangles and shader programs per frame, from `RenderStats.tsx`)
+  - the room number (and furthest)
+  - the area
+- **skip to next segment** teleports you to the next segment.
+- **next kind** forces every new segment to one kind.
+- `?seed=` in the URL pins the layout.
+
+**How to test:** run `npm run dev`, click **Enter the castle**, and check that:
+
+1. Walking up to the gate swings its doors open. Through the gate house's back doorway, the first **Threshold** lies beyond: lanterns down both sides of a walkway over the void and a softly glowing tatami runner. **Dev → World → room** reads 0 at the Gate and 1 on the Threshold, and **area** reads 敷居 The Threshold.
+2. Keep walking (or press **skip to next segment** a few times). Segments follow one another with no gap and no jolt where they meet. On a **Suspended Walkway**, the camera turns and rises with the curve and arch, and pavilions drift in the dark around it.
+3. Pick **The Shoji Corridor** in **next kind** and skip four times: a long lit hall with wall lanterns at eye level and a vermilion portal. Repeat for **The Open Gallery** (shoji on one side, the void and floating pavilions on the other).
+4. Pick **The Tatami Room** and skip four times. Walk in: about 1.5 m in, the far doors slide apart onto a nearly identical room. Its red scroll hangs somewhere else and a corner lantern is gone. The next room changes again.
+5. Walk back (**S** or scroll up): the segments behind are there again, exactly as they were, and doors you opened are still open.
+6. In **renderer**, the shader count doesn't climb as new segments appear. The draw calls stay in the ranges above.
+7. Open `/?seed=42` twice: the same castle both times (Threshold, Open Gallery, Suspended Walkway, Open Gallery, Suspended Walkway, two Tatami Rooms…). Without `?seed`, a different castle each visit.
+
 ### Kit dev view (`?kit`)
 
-Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern, with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
+Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
 
 **How to test:** run `npm run dev`, open `/?kit`, and step through the pieces:
 
@@ -254,12 +368,13 @@ src/
   lib/
     palette.ts          The only source of colors (also exposed as --color-* CSS variables)
     color.ts            Blends of two palette colors (three Color or CSS string)
-    random.ts           Seeded PRNG (mulberry32) for stable procedural layouts
+    random.ts           Seeded PRNG (mulberry32), seed hashing, and range / pick / weighted-pick helpers
     math.ts             clamp, smoothstep, damp, smoothDamp (critically damped spring)
   state/
     useGameStore.ts     zustand store (soundEnabled, introComplete, guideOpen, guideSeen)
     useFigureStore.ts   Which of the six hidden figures have been found
-    usePlayerStore.ts   Progress along the path: target, smoothed progress, speed, path length, walkBy()
+    usePlayerStore.ts   Progress along the walk: target, smoothed progress, speed, walkable bounds, walkBy(), jumpTo()
+    useWorldStore.ts    Where you are: area, kanji, room number (and furthest), seed, dev's forced kind
     footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
   ui/
@@ -268,7 +383,7 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel for fog and bloom, player monitors and guide / figure buttons (dev builds only)
+    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, room, area, next kind, skip), guide / figure buttons (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
@@ -285,7 +400,7 @@ src/
     KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
     KitOverlay.css
   scene/                3D components (R3F)
-    CastleCanvas.tsx    The <Canvas>: renderer settings, camera, scene contents
+    CastleCanvas.tsx    The <Canvas>: renderer settings, camera, light pool, backdrop, world generator (seeded), player
     CastleCanvas.css    Full-screen layer behind the UI, fade-in
     Atmosphere.tsx      Void background and FogExp2
     Starfield.tsx       Twinkling star sphere (shader points)
@@ -296,6 +411,13 @@ src/
     player/
       tuning.ts         Every movement and look constant (eye height, speeds, bob, limits)
       usePlayerInput.ts Wheel, keys, mouse drag, touch swipe and mouse look-around
+      walkPath.ts       WalkPath: what the player walks along (a point for any distance)
+    lighting/
+      lightSources.ts   Registry of warm light sources (position, intensity, reach, flicker)
+      LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades
+      PooledLight.tsx   Registers one source at its world position (instead of <pointLight>)
+    RenderStats.tsx     Dev: draw calls, triangles and shader programs per frame
+    frameStats.ts       Where RenderStats leaves them for the dev panel
     Pagoda.tsx          Distant multi-story pagoda with lit window grids
     distantHaze.ts      Thinner fog + low fog bank for far scenery (material patch)
     renderer.ts         WebGL settings shared by every canvas
@@ -308,6 +430,15 @@ src/
       materials.ts      Shared materials (create once, never dispose)
       geometry.ts       texturedBox (world-scaled UVs), merging, seeds, shared unit plane
       useDisposable.ts  useMemo for geometry that disposes the old one
+      flicker.ts        The lantern flicker curve, shared by paper and light
+      lanternGeometry.ts  Lantern frame / paper / cord shapes, shared per kind
+      shojiGeometry.ts  Shoji frame and lattice builder, paper rectangle
+      KitInstances.tsx  Any shared geometry drawn once per placement (one InstancedMesh)
+      BoxInstances.tsx  Identical cedar boxes, instanced, with world-scaled grain
+      MergedBoxes.tsx   One-off boxes merged into a single mesh
+      ShojiInstances.tsx  A wall of identical shoji panels in three draw calls
+      LanternInstances.tsx  A row of lanterns in three draw calls, per-instance flicker, pooled lights
+      HangingScroll.tsx Vermilion hanging scroll
       WoodBeam.tsx      Horizontal beam
       Post.tsx          Vertical post
       FloorPlanks.tsx   Polished floorboards with gaps
@@ -318,17 +449,36 @@ src/
       TatamiFloor.tsx   Tatami mats with dark borders
       Roof.tsx          Curved, extruded temple roof with upturned corners
   world/                Level generation
+    segment.ts          Segment, SegmentDefinition and SegmentPlan types; placeSegment, straightPlan, toWorld
+    WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, attaches each start to the last end, forgets old ones
+    WorldPath.ts        Every segment's path joined into one walk, by distance
+    World.tsx           Mounts the window of segments; updates walkable bounds and the world store
+    SegmentView.tsx     One segment's component in a group at its start transform
+    Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill
+    useProgressTrigger.ts  Fire once when the player reaches a distance (doors)
+    pieces/
+      pavilionLayout.ts Floating pavilion proportions and layout
+      FloatingPavilion.tsx  A pavilion hanging in the void, gently bobbing
     segments/
-      Gate.tsx          The opening scene: bridge, landing, gate, back glow, pagodas
+      registry.ts       The five random kinds and their weights
+      common.ts         Bay size, pier pairs, lantern phases
+      shojiWall.ts      Shoji wall along the walk (posts, beams, panels, transoms) and lit patterns
+      threshold/        The Threshold: layout.ts, Threshold.tsx, definition.ts
+      walkway/          The Suspended Walkway: layout.ts (curve, planks, rails, posts), SuspendedWalkway.tsx, definition.ts
+      corridor/         The Shoji Corridor: layout.ts, ShojiCorridor.tsx, definition.ts
+      gallery/          The Open Gallery: layout.ts, OpenGallery.tsx, definition.ts
+      tatami/           The Tatami Room: layout.ts (runs, scroll and lantern changes), TatamiRoom.tsx, SlidingDoorPair.tsx, definition.ts
+      Gate.tsx          The opening segment: bridge, landing, gate, back glow
       gate/
-        layout.ts       Every dimension of the opening, the walking path's points and the intro camera path
-        path.ts         GATE_PATH: the walkable CatmullRomCurve3 across the bridge
+        definition.ts   The Gate as segment 0
+        layout.ts       Every dimension of the opening, the walk's points, when the doors open, and the intro camera path
         Bridge.tsx      Bridge deck, stringers, railings, piers, head lanterns
         Landing.tsx     The platform the gate stands on
         GateHouse.tsx   The two-story gate: posts, shoji, balcony, upper story, roof
         ShojiBay.tsx    A bay of shoji panels with an optional lit transom
-        SlidingDoors.tsx  Closed board doors with light leaking through
+        GateDoors.tsx   Board doors with light leaking through; they swing open as you approach
         DoorLightSpill.tsx  Additive light streak on the floor in front of the doors
+        doorSpillMaterial.ts  Its shared material and canvas mask
         GateBackGlow.tsx  Faint warm haze behind the roof
   audio/                Sound
 ```
@@ -344,7 +494,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 5. The Gate and the intro
 - [x] 6. Movement
 - [x] 7. The guide scroll
-- [ ] 8. The endless segment system
+- [x] 8. The endless segment system
 - [ ] 9. The HUD
 - [ ] 10. The Fall
 - [ ] 11. The distant castle

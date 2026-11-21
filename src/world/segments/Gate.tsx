@@ -1,27 +1,22 @@
-import { palette } from '../../lib/palette'
-import Pagoda from '../../scene/Pagoda'
 import Bridge from './gate/Bridge'
 import GateBackGlow from './gate/GateBackGlow'
 import GateHouse from './gate/GateHouse'
-import { GATE_Z } from './gate/layout'
+import { BACK_GLOW_FADE, GATE_Z } from './gate/layout'
 import Landing from './gate/Landing'
 
 /**
- * The opening scene: a long bridge over the void to a two-story gate with closed, glowing
- * doors, and two distant pagodas, left and right, half lost in the fog.
+ * The opening segment: a long bridge over the void to a two-story gate whose heavy doors
+ * swing open as the player nears, and a landing behind it where the endless castle begins.
+ * (The distant pagodas and the faint warm fill live in `Backdrop`, which never unmounts.)
  */
 export default function Gate() {
   return (
     <group>
-      {/* A whisper of warm fill so the unlit stretch of bridge still reads against the void. */}
-      <hemisphereLight args={[palette.lantern, palette.void, 0.1]} />
       <Bridge />
       <Landing />
       <GateHouse />
-      {/* Behind the roof, so its curve reads against the void. */}
-      <GateBackGlow position={[0, 7, GATE_Z - 14]} size={[46, 26]} />
-      <Pagoda position={[-44, -12, -82]} rotationY={0.38} seed={7} />
-      <Pagoda position={[47, -14, -90]} rotationY={-0.3} baseWidth={12} tierHeight={6.4} seed={19} />
+      {/* Behind the roof, so its curve reads against the void. Fades before the walk reaches it. */}
+      <GateBackGlow position={[0, 7, GATE_Z - 14]} size={[46, 26]} fadeOut={BACK_GLOW_FADE} />
     </group>
   )
 }

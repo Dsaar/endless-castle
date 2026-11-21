@@ -1,6 +1,6 @@
 import type { BufferGeometry } from 'three'
 import { mergeAndDispose, seedFromPosition, texturedBox, uvOffsets } from './geometry'
-import { getTatamiBorderMaterial, getTatamiMaterial, getUnderlayMaterial } from './materials'
+import { getTatamiBorderMaterial, getTatamiGlowMaterial, getTatamiMaterial, getUnderlayMaterial } from './materials'
 import { layoutTatami } from './tatamiLayout'
 import type { KitTransform } from './types'
 import { useDisposable } from './useDisposable'
@@ -12,6 +12,8 @@ export interface TatamiFloorProps extends KitTransform {
    * The mat surface is at `position`'s y.
    */
   size?: [number, number]
+  /** Faintly self-lit mats, as if lit from within (a glowing runner). */
+  glow?: boolean
 }
 
 const CELL = 0.91
@@ -33,14 +35,14 @@ interface TatamiGeometry {
  * Tatami mats in the traditional layout (no four corners meeting), each with dark cloth
  * borders along its long sides. Mats and borders are two merged meshes.
  */
-export default function TatamiFloor({ position, rotation, size = [3.64, 3.64], seed }: TatamiFloorProps) {
+export default function TatamiFloor({ position, rotation, size = [3.64, 3.64], glow = false, seed }: TatamiFloorProps) {
   const [width, depth] = size
   const s = seed ?? seedFromPosition(position)
   const geo = useDisposable(() => buildTatami(width, depth, s), [width, depth, s])
 
   return (
     <group position={position} rotation={rotation}>
-      <mesh geometry={geo.mats} material={getTatamiMaterial()} />
+      <mesh geometry={geo.mats} material={glow ? getTatamiGlowMaterial() : getTatamiMaterial()} />
       <mesh geometry={geo.borders} material={getTatamiBorderMaterial()} />
       <mesh geometry={geo.underlay} material={getUnderlayMaterial()} />
     </group>

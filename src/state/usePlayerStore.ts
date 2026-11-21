@@ -3,7 +3,7 @@ import { clamp } from '../lib/math'
 import { MAX_LEAD } from '../scene/player/tuning'
 
 /**
- * Where the player is along the world's path, in meters from its start.
+ * Where the player is along the world's walk, in meters from the start of the Gate.
  *
  * Input moves `targetProgress`; `Player` eases `progress` toward it every frame. While the
  * player is moving, `progress` and `speed` change every frame, so React components should
@@ -11,35 +11,51 @@ import { MAX_LEAD } from '../scene/player/tuning'
  * that derives something coarse (a boolean, a segment index).
  */
 interface PlayerState {
-  /** Length of the current path; progress can't pass it. 0 until the path is known. */
-  pathLength: number
+  /**
+   * The walkable stretch of the walk, set by the world as it generates segments ahead and
+   * forgets old ones behind. Progress stays inside it. Both 0 until the world is ready.
+   */
+  pathStart: number
+  pathEnd: number
   /** Where input wants the player to be. */
   targetProgress: number
   /** Where the player is (smoothed). */
   progress: number
   /** Current walking speed in m/s (unsigned). */
   speed: number
-  setPathLength: (pathLength: number) => void
+  /** Counts `jumpTo` calls, so `Player` knows to snap instead of walk. */
+  jumps: number
+  setPathBounds: (pathStart: number, pathEnd: number) => void
   /** Move the target by `meters` (negative walks back), within the path and MAX_LEAD. */
   walkBy: (meters: number) => void
+  /** Teleport to `progress` (dev tools): no walk, no footsteps. */
+  jumpTo: (progress: number) => void
 }
 
-/** Keeps a target on the path, never below the start, and at most MAX_LEAD from the player. */
-export function clampTarget(target: number, progress: number, pathLength: number) {
-  return clamp(target, Math.max(0, progress - MAX_LEAD), Math.min(pathLength, progress + MAX_LEAD))
+/** Keeps a target on the walkable stretch, and at most MAX_LEAD from the player. */
+export function clampTarget(target: number, progress: number, pathStart: number, pathEnd: number) {
+  return clamp(target, Math.max(pathStart, progress - MAX_LEAD), Math.min(pathEnd, progress + MAX_LEAD))
 }
 
 export const usePlayerStore = create<PlayerState>()((set) => ({
-  pathLength: 0,
+  pathStart: 0,
+  pathEnd: 0,
   targetProgress: 0,
   progress: 0,
   speed: 0,
-  setPathLength: (pathLength) =>
+  jumps: 0,
+  setPathBounds: (pathStart, pathEnd) =>
     set((s) => ({
-      pathLength,
-      progress: Math.min(s.progress, pathLength),
-      targetProgress: Math.min(s.targetProgress, pathLength),
+      pathStart,
+      pathEnd,
+      progress: clamp(s.progress, pathStart, pathEnd),
+      targetProgress: clamp(s.targetProgress, pathStart, pathEnd),
     })),
   walkBy: (meters) =>
-    set((s) => ({ targetProgress: clampTarget(s.targetProgress + meters, s.progress, s.pathLength) })),
+    set((s) => ({ targetProgress: clampTarget(s.targetProgress + meters, s.progress, s.pathStart, s.pathEnd) })),
+  jumpTo: (progress) =>
+    set((s) => {
+      const p = clamp(progress, s.pathStart, s.pathEnd)
+      return { progress: p, targetProgress: p, speed: 0, jumps: s.jumps + 1 }
+    }),
 }))

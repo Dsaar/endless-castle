@@ -1,4 +1,4 @@
-import { Color, DoubleSide, MeshStandardMaterial } from 'three'
+import { Color, DoubleSide, MeshStandardMaterial, type WebGLProgramParametersWithUniforms } from 'three'
 import { mixPalette } from '../../lib/color'
 import { palette } from '../../lib/palette'
 import { getPaperTexture, getRoofTileTexture, getTatamiTexture, getWoodTexture } from './textures'
@@ -133,3 +133,81 @@ export const getRoofTileMaterial = lazy(
       metalness: 0.1,
     }),
 )
+
+/** Glowing tatami: the same rush surface, faintly self-lit (the Threshold's runner). */
+export const TATAMI_GLOW_INTENSITY = 0.3
+
+export const getTatamiGlowMaterial = lazy(
+  () =>
+    new MeshStandardMaterial({
+      name: 'kit/tatami-glow',
+      color: NEUTRAL,
+      map: getTatamiTexture(),
+      bumpMap: getTatamiTexture(),
+      bumpScale: 0.4,
+      emissive: NEUTRAL,
+      emissiveMap: getTatamiTexture(),
+      emissiveIntensity: TATAMI_GLOW_INTENSITY,
+      roughness: 0.82,
+    }),
+)
+
+/** Vermilion lacquer, the one accent: glossy, with a hint of the grain underneath. Use sparingly. */
+export const getLacquerMaterial = lazy(
+  () =>
+    new MeshStandardMaterial({
+      name: 'kit/lacquer',
+      color: palette.vermilion,
+      bumpMap: getWoodTexture(),
+      bumpScale: 0.15,
+      roughness: 0.32,
+      metalness: 0,
+    }),
+)
+
+/** Vermilion silk for a hanging scroll's mounting: matte, with the paper's fibres. */
+export const getScrollClothMaterial = lazy(
+  () =>
+    new MeshStandardMaterial({
+      name: 'kit/scroll-cloth',
+      color: palette.vermilion,
+      map: getPaperTexture(),
+      roughness: 0.85,
+      side: DoubleSide,
+    }),
+)
+
+/** Earthen plaster (tsuchikabe) for solid room walls: warm, matte, faintly fibrous. */
+export const getPlasterMaterial = lazy(
+  () =>
+    new MeshStandardMaterial({
+      name: 'kit/plaster',
+      color: mixPalette('shoji', 'cedarDark', 0.5),
+      map: getPaperTexture(),
+      roughness: 0.95,
+    }),
+)
+
+/**
+ * Lantern paper for instanced lanterns. Each instance's glow comes from a per-instance
+ * `instanceGlow` attribute (see `LanternInstances`), so one material and one draw call
+ * serve a whole row of lanterns flickering out of step. Only use it on instanced meshes
+ * that carry that attribute.
+ */
+export const getInstancedLanternPaperMaterial = lazy(() => {
+  const material = getLanternPaperMaterial().clone()
+  material.name = 'kit/lantern-paper-instanced'
+  material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
+    shader.vertexShader =
+      'attribute float instanceGlow;\nvarying float vGlow;\n' +
+      shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvGlow = instanceGlow;')
+    shader.fragmentShader =
+      'varying float vGlow;\n' +
+      shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= vGlow;',
+      )
+  }
+  material.customProgramCacheKey = () => 'kit/lantern-paper-instanced'
+  return material
+})
