@@ -6,6 +6,7 @@ import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereS
 import { useFigureStore } from '../state/useFigureStore'
 import { useGameStore } from '../state/useGameStore'
 import { usePlayerStore } from '../state/usePlayerStore'
+import { useSubtitleStore } from '../state/useSubtitleStore'
 import { useWorldStore } from '../state/useWorldStore'
 import { RANDOM_SEGMENT_KINDS, SEGMENT_DEFINITIONS, type RandomSegmentKind } from '../world/segments/registry'
 
@@ -24,6 +25,14 @@ const readArea = () => {
   const w = useWorldStore.getState()
   return `${w.kanji}  ${w.area}`
 }
+// Sample lines for the HUD's subtitle area, until the castle has things to say.
+const SAMPLE_SUBTITLES: [en: string, ja: string, duration: number][] = [
+  ['The doors close behind you.', '背後で扉が閉まる。', 3],
+  ['Someone is counting the lanterns.', '誰かが提灯を数えている。', 4],
+  ['There is no exit.', '出口はない。', 2.5],
+]
+let subtitleIndex = 0
+
 const KIND_OPTIONS: Record<string, RandomSegmentKind | 'random'> = {
   random: 'random',
   ...Object.fromEntries(RANDOM_SEGMENT_KINDS.map((k) => [SEGMENT_DEFINITIONS[k].area, k])),
@@ -117,6 +126,17 @@ export default function DevPanel() {
       if (next >= 0) markFound(next)
     }),
     'reset figures': button(() => useFigureStore.getState().resetFound()),
+  })
+
+  useControls('HUD', {
+    'show subtitle': button(() => {
+      const [en, ja, duration] = SAMPLE_SUBTITLES[subtitleIndex++ % SAMPLE_SUBTITLES.length]
+      useSubtitleStore.getState().showSubtitle(en, ja, duration)
+    }),
+    'toggle sound': button(() => {
+      const game = useGameStore.getState()
+      game.setSoundEnabled(!game.soundEnabled)
+    }),
   })
 
   return <Leva titleBar={{ title: 'Dev' }} />

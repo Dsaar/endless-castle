@@ -1,0 +1,8 @@
+/* Layers share one grid cell, so they stack in place and the box fits the largest. */
+.crossfade {
+  display: grid;
+}
+
+.crossfade__layer {
+  grid-area: 1 / 1;
+}

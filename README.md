@@ -38,12 +38,14 @@ npm run lint     # oxlint
 | Looking      | Touch: swipe sideways, or two-finger drag | Look around. A one-finger swipe picks walk or look by its first direction. |
 | Looking      | Move the mouse (desktop)    | The view leans up to 4° toward the pointer |
 | The Gate     | First scroll (or W / ↑ / Space / swipe) | Opens the guide scroll instead of walking. Happens once. |
-| Guide        | **GUIDE** button, top left  | Opens the guide again |
+| Guide        | **案内 GUIDE** button, bottom right | Opens the guide again |
+| HUD          | **SOUND ON / OFF**, bottom right | Turn sound on or off (the equalizer bars dance while it is on) |
 | Guide        | Click a tab, or ← → / Home / End on the tabs | Switch between The Castle, Moving, Hidden Ones and Signs |
 | Guide        | Esc, or **Accept the summons** | Roll the scroll back up |
 | Guide        | Tab / Shift+Tab             | Move between the tabs, the text and the button (focus stays inside the scroll) |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
+| Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
 | Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
 | Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind (the 3 already built ahead come first: skip 4 times to reach it) |
 | Castle        | `?seed=123` in the URL      | Build the castle from that seed (the same seed always builds the same castle). Without it, every visit builds a new one. |
@@ -214,7 +216,7 @@ Scroll-driven walking along a path, in `src/scene/Player.tsx`.
 
 ### The guide scroll
 
-A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It opens by itself the first time you try to walk at the gate, and later from the **GUIDE** button.
+A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It opens by itself the first time you try to walk at the gate, and later from the **案内 GUIDE** button in the HUD.
 
 - **Look:** parchment from layered CSS gradients (edge darkening, a few warm stains, a cream body) with fine fractal noise multiplied over it. Cedar rollers top and bottom with brass end caps, and a cord up to a brass nail above the top roller. Two faded vermilion seals (`src/ui/guide/InkStamp.tsx`, SVG with turbulence filters for rough edges and dry patches) sit in the bottom-right corner. All colors are palette variables or blends of two.
 - **Unrolling** (GSAP, 0.9 s, `power2.inOut`): the rollers start together in the middle and move apart while the paper is revealed between them. The paper's `clip-path` is driven by one CSS variable (`--unrolled`, 0 to 1) and the rollers by `transform`, so nothing reflows. The grain on the rollers slides as they move, so they look like they turn. Closing plays the same move back to the middle, then fades out. Opening or closing partway through picks up from where the scroll is.
@@ -230,13 +232,13 @@ A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It
   - `guideOpen` is set in `useGameStore`.
   - Player input is paused: wheel, keys, drag and swipe are ignored, held keys are released, and any drag in progress is dropped.
   - The canvas dims and blurs (`.castle-canvas--dimmed`, toggled from a store subscription, so the 3D scene never re-renders). The intro text sinks back with it.
-  - The **GUIDE** button hides.
+  - The HUD sinks back with the canvas and is inert, so its buttons are out of reach.
   - Input comes back as soon as the scroll starts rolling up.
 - **The first time:** in `usePlayerInput`, the first attempt to walk (wheel, W / ↑, Space, or a vertical swipe) opens the guide and is swallowed, so you don't move. After that, walking works normally.
 - **Accessibility:**
   - It is a modal dialog with focus kept inside.
   - The tabs follow the ARIA tabs pattern: arrow keys, Home and End.
-  - Focus goes to the selected tab on open, and back to the **GUIDE** button (if that opened it) on close.
+  - Focus goes to the selected tab on open, and back to the **案内 GUIDE** button (if that opened it) on close.
   - With reduced motion, it fades in and out without unrolling.
 - **Small screens:** the paper is at most 34 rem wide and fits the viewport with a 16 px gutter. The panel scrolls inside the paper and fades at its bottom edge. Below 480 px wide, the key caps stack in one column. On short landscape screens, the header shrinks to one row.
 
@@ -247,7 +249,7 @@ A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It
 3. The four tabs switch content, by click or with ← → once a tab has focus. **The Castle** has the red drop cap and *There is no exit.* at the end.
 4. In **Dev → Guide**, click **find a figure** twice: on **Hidden Ones**, slots 1 and 2 turn into vermilion rings, and the count reads **2 of 6 found**.
 5. **Esc** rolls the scroll back up into the middle and the castle comes back into focus. Scrolling now walks.
-6. The **GUIDE** button (top left) opens it again. **Accept the summons** closes it, and focus returns to the button.
+6. The **案内 GUIDE** button (bottom right) opens it again. **Accept the summons** closes it, and focus returns to the button.
 7. In DevTools device mode at 375 × 667 and 667 × 375: the scroll fits with no sideways scrolling, and the panel scrolls inside the paper.
 8. With reduced motion turned on, the scroll fades in and out instead of unrolling.
 
@@ -343,6 +345,32 @@ The shader count stays flat while you walk (19–20 in the dev panel).
 6. In **renderer**, the shader count doesn't climb as new segments appear. The draw calls stay in the ranges above.
 7. Open `/?seed=42` twice: the same castle both times (Threshold, Open Gallery, Suspended Walkway, Open Gallery, Suspended Walkway, two Tatami Rooms…). Without `?seed`, a different castle each visit.
 
+### The HUD
+
+The in-game overlay, in `src/ui/HUD.tsx` (styles in `src/ui/HUD.css`). It is a full-screen layer with `pointer-events: none`: only its buttons take clicks, so dragging, scrolling and swiping anywhere else still reach the castle. The four corners fade in together once the intro camera arrives (`introComplete`). While the guide is open, the HUD dims and blurs with the canvas and is `inert`.
+
+- **Top left** (`hud/HudHeader.tsx`): **THE ENDLESS CASTLE 無限城** in tiny letter-spaced capitals, **HIDDEN ONES 0 / 6** under it, then six small outlined circles numbered 6 to 1. A found figure's circle fills vermilion (from `useFigureStore`, with a 0.8 s color fade).
+- **Bottom left** (`hud/AreaPlate.tsx`): the current area name (28 px, uppercase, letter-spaced) with its kanji beside it, then a hairline and the room number, **N° 001**. Both come from `useWorldStore`. When you walk into another room, the old plate fades out while the new one fades in over 0.8 s. A long name wraps and grows upward, and the kanji drops under the name when there is no room beside it.
+- **Bottom right**:
+  - **案内 GUIDE** (`hud/GuideToggle.tsx`) opens the guide scroll. It replaces the old top-left GUIDE button and shows from the start, not only after the guide has opened once. Focus comes back to it when the scroll closes.
+  - The sound toggle (`hud/SoundToggle.tsx`, `hud/Equalizer.tsx`) flips `soundEnabled` in `useGameStore`. While sound is on, five bars bounce at different speeds (CSS `transform` only) and the label reads **SOUND ON**. While it is off, the bars lie flat and the label reads **SOUND OFF**. For screen readers, the button is named "Sound" and uses `aria-pressed`. Nothing makes sound yet: audio comes in step 16.
+- **Lower center** (`hud/SubtitleLine.tsx`): subtitles. Any code can call `useSubtitleStore.getState().showSubtitle(en, ja, duration)`. The English line shows in italics, with a smaller, dimmer Japanese line under it (pass `''` to leave it out). The line fades in over 0.6 s and stays up for `duration` seconds (default 4). Then it fades out. A new line crossfades over the old one. `clearSubtitle()` removes it early. Screen readers hear each line through a `role="status"` region.
+- **Crossfades** (`src/ui/Crossfade.tsx`, `CrossfadeLayer.tsx`): a small reusable component. Give it a `contentKey`, and whenever the key changes it stacks the new content over the old one in the same grid cell. GSAP fades the old layer out and the new one in, then the old layer is removed. A layer that is leaving is `aria-hidden`.
+- **Readability:** all text is the UI off-white, with a soft void-colored text shadow (hairlines, circles and bars get a matching `box-shadow`). Numbers use lining figures, because Cormorant's default old-style figures made "001" look like "ooı".
+- **Small screens:** every size is in `em` off the HUD's root font size, so one rule scales it all. Below 640 px wide or 480 px tall, the HUD drops to 13 px from 16 px, the area name shrinks a little more, the gutters tighten, and GUIDE stacks above the sound toggle so the area name keeps most of the width.
+- **Reduced motion:** the crossfades are instant, and the equalizer bars hold still at uneven heights.
+
+**How to test:** run `npm run dev`, click **Enter in silence**, and wait for the intro camera to arrive. Then check that:
+
+1. The four corners fade in. Top left reads **HIDDEN ONES 0 / 6** with six empty circles (6 to 1), bottom left reads **THE GATE 城門** and **N° 000**, and bottom right reads **SOUND OFF** with flat bars.
+2. Clicking the sound toggle switches it to **SOUND ON** and the bars start bouncing. Click again to turn it off.
+3. Walk (or use **Dev → World → skip to next segment**) into the next room: the area plate crossfades to the new name and **N° 001** over about a second.
+4. **Dev → Guide → find a figure** twice: circles 1 and 2 fill vermilion and the count reads **2 / 6**.
+5. **Dev → HUD → show subtitle**: a line and its Japanese fade in at the lower center and go away after a few seconds. Click it twice quickly: the second line crossfades over the first.
+6. Drag or scroll over the area name or the subtitle: you look and walk as usual. Only the two buttons react to the pointer.
+7. **案内 GUIDE** opens the guide. The HUD dims behind it, and closing the guide gives focus back to the button.
+8. In DevTools device mode at 375 × 667 and 667 × 375: everything is smaller, GUIDE sits above SOUND, nothing overlaps, and the page doesn't scroll sideways.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -363,7 +391,7 @@ Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and 
 index.html              Google Fonts, root element
 src/
   main.tsx              Entry point; applies the palette to CSS variables
-  App.tsx               Shows the title screen, then the 3D canvas and intro overlay (+ dev panel in dev); ?kit opens the kit view
+  App.tsx               Shows the title screen, then the 3D canvas, intro overlay, HUD and guide (+ dev panel in dev); ?kit opens the kit view
   index.css             Global styles, font variables, .kanji and .label classes
   lib/
     palette.ts          The only source of colors (also exposed as --color-* CSS variables)
@@ -372,6 +400,7 @@ src/
     math.ts             clamp, smoothstep, damp, smoothDamp (critically damped spring)
   state/
     useGameStore.ts     zustand store (soundEnabled, introComplete, guideOpen, guideSeen)
+    useSubtitleStore.ts The HUD's subtitle line: showSubtitle(en, ja, duration), clearSubtitle()
     useFigureStore.ts   Which of the six hidden figures have been found
     usePlayerStore.ts   Progress along the walk: target, smoothed progress, speed, walkable bounds, walkBy(), jumpTo()
     useWorldStore.ts    Where you are: area, kanji, room number (and furthest), seed, dev's forced kind
@@ -383,13 +412,23 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, room, area, next kind, skip), guide / figure buttons (dev builds only)
+    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, room, area, next kind, skip), guide / figure buttons, HUD subtitle / sound buttons (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
     GuideScroll.css     Parchment, rollers, brass caps, stamps, tab content
-    GuideButton.tsx     GUIDE button, top left, once the guide has been seen
-    GuideButton.css
+    HUD.tsx             The in-game overlay: header, area plate, subtitles, guide and sound buttons
+    HUD.css             All HUD styles (em-based, one small-screen rule scales everything)
+    Crossfade.tsx       Crossfades its children whenever contentKey changes
+    CrossfadeLayer.tsx  One layer of a crossfade (GSAP fade in / out)
+    Crossfade.css
+    hud/
+      HudHeader.tsx     Top left: title, HIDDEN ONES count, six circles
+      AreaPlate.tsx     Bottom left: area name, kanji, hairline, room number (crossfades per room)
+      GuideToggle.tsx   Bottom right: 案内 GUIDE
+      SoundToggle.tsx   Bottom right: SOUND ON / OFF
+      Equalizer.tsx     The five bars on the sound toggle
+      SubtitleLine.tsx  Lower center: English and Japanese subtitle lines
     guide/
       content.ts        Every word in the guide: tabs, lore, areas, key bindings, omens
       CastlePanel.tsx   The Castle tab
@@ -495,7 +534,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 6. Movement
 - [x] 7. The guide scroll
 - [x] 8. The endless segment system
-- [ ] 9. The HUD
+- [x] 9. The HUD
 - [ ] 10. The Fall
 - [ ] 11. The distant castle
 - [ ] 12. Junctions and stairs
