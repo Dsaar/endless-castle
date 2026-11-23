@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Vector3 } from 'three'
 import { clamp, damp, smoothDamp, smoothstep, type Spring } from '../lib/math'
 import { emitFootstep } from '../state/footsteps'
+import { useFallStore } from '../state/useFallStore'
 import { useGameStore } from '../state/useGameStore'
 import { clampTarget, usePlayerStore } from '../state/usePlayerStore'
 import {
@@ -59,6 +60,8 @@ const behind = new Vector3()
  * a footstep every STEP_LENGTH meters. The world's segments join with matching tangents, so
  * the camera turns smoothly across their boundaries. Does nothing until the intro camera move
  * has finished, then takes over from exactly where it stopped. A `jumpTo` snaps instead.
+ * Stands down while THE FALL is scripted (`FallDirector` owns the camera), and picks up again
+ * at the landing with the look centered and no head-bob, where the fall left the camera.
  */
 export default function Player({ path }: PlayerProps) {
   const canvas = useThree((s) => s.gl.domElement)
@@ -79,16 +82,32 @@ export default function Player({ path }: PlayerProps) {
     lookPitch: 0,
     aroundYaw: 0,
     aroundPitch: 0,
+    /** True while the Fall has the camera. */
+    suspended: false,
   })
 
   useFrame(({ camera }, delta) => {
     if (!useGameStore.getState().introComplete) return
+    if (useFallStore.getState().phase === 'falling') {
+      motion.current.suspended = true
+      return
+    }
     const dt = Math.min(delta, MAX_DT)
     if (dt <= 0) return
     const m = motion.current
     const input = inputRef.current
     const store = usePlayerStore.getState()
     const { pathStart, pathEnd } = store
+
+    // Back from the Fall: it left the camera level and centered on the path, so start from rest.
+    if (m.suspended) {
+      m.suspended = false
+      m.bobAmp = 0
+      m.lookYaw = 0
+      m.lookPitch = 0
+      m.aroundYaw = 0
+      m.aroundPitch = 0
+    }
 
     // A teleport (dev tools): take the new position as is, without walking there.
     if (store.jumps !== m.jumps) {

@@ -1,8 +1,16 @@
 import { useEffect, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import { Bloom, EffectComposer, Noise, ToneMapping, Vignette } from '@react-three/postprocessing'
-import { ToneMappingMode, type BloomEffect } from 'postprocessing'
+import { ToneMappingMode, type BloomEffect, type VignetteEffect } from 'postprocessing'
 import { useShallow } from 'zustand/react/shallow'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
+import { fallFx, fallIntensity } from './fall/fallFx'
+import {
+  FALL_VIGNETTE_DARKNESS,
+  FALL_VIGNETTE_OFFSET,
+  VIGNETTE_DARKNESS,
+  VIGNETTE_OFFSET,
+} from './fall/tuning'
 
 /**
  * Bloom → ACES tone mapping → vignette → film grain.
@@ -10,9 +18,12 @@ import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereS
  * The scene renders into a half-float buffer, so emissive values above 1 survive until bloom.
  * EffectComposer forces the renderer's own tone mapping off while mounted, so ACES is
  * applied here by the ToneMapping effect rather than by the renderer.
+ *
+ * The vignette closes in with the speed of THE FALL (`fallFx`), set on the effect each frame.
  */
 export default function PostEffects() {
   const bloomRef = useRef<BloomEffect>(null)
+  const vignetteRef = useRef<VignetteEffect>(null)
   const { bloomIntensity, bloomThreshold, bloomSmoothing, bloomRadius } = useAtmosphereStore(
     useShallow((s) => ({
       bloomIntensity: s.bloomIntensity,
@@ -32,6 +43,14 @@ export default function PostEffects() {
     bloom.mipmapBlurPass.radius = bloomRadius
   }, [bloomThreshold, bloomSmoothing, bloomRadius])
 
+  useFrame(() => {
+    const vignette = vignetteRef.current
+    if (!vignette) return
+    const k = fallIntensity(fallFx.speed)
+    vignette.offset = VIGNETTE_OFFSET + (FALL_VIGNETTE_OFFSET - VIGNETTE_OFFSET) * k
+    vignette.darkness = VIGNETTE_DARKNESS + (FALL_VIGNETTE_DARKNESS - VIGNETTE_DARKNESS) * k
+  })
+
   return (
     <EffectComposer multisampling={4}>
       <Bloom
@@ -43,7 +62,7 @@ export default function PostEffects() {
         intensity={bloomIntensity}
       />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <Vignette offset={0.3} darkness={0.7} />
+      <Vignette ref={vignetteRef} offset={VIGNETTE_OFFSET} darkness={VIGNETTE_DARKNESS} />
       <Noise opacity={0.04} />
     </EffectComposer>
   )

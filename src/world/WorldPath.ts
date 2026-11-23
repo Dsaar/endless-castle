@@ -11,6 +11,8 @@ import type { Segment } from './segment'
 export class WorldPath implements WalkPath {
   /** Index of the last segment looked up; walking mostly stays in it. */
   private cursor = 0
+  /** The walk is closed before this distance (see `sealBefore`). */
+  private floor = Number.NEGATIVE_INFINITY
 
   private readonly segments: readonly Segment[]
 
@@ -18,9 +20,20 @@ export class WorldPath implements WalkPath {
     this.segments = segments
   }
 
-  /** Distance where the oldest remembered segment begins: the player can't walk back past it. */
+  /**
+   * Distance where the walk begins: the oldest remembered segment's start, or the seal if
+   * that is later. The player can't walk back past it.
+   */
   get start() {
-    return this.segments.length ? this.segments[0].startDistance : 0
+    return Math.max(this.segments.length ? this.segments[0].startDistance : 0, this.floor)
+  }
+
+  /**
+   * Closes the walk before `distance` for good. After the Fall the way back is a 120 m drop,
+   * and the joined path jumps across it, so walking back must stop at the landing.
+   */
+  sealBefore(distance: number) {
+    this.floor = Math.max(this.floor, distance)
   }
 
   /** Distance where the newest segment ends. */

@@ -43,6 +43,8 @@ npm run lint     # oxlint
 | Guide        | Click a tab, or ← → / Home / End on the tabs | Switch between The Castle, Moving, Hidden Ones and Signs |
 | Guide        | Esc, or **Accept the summons** | Roll the scroll back up |
 | Guide        | Tab / Shift+Tab             | Move between the tabs, the text and the button (focus stays inside the scroll) |
+| The Fall     | Walk off the end of the first Threshold | THE FALL plays by itself. Walking and looking are locked until you land: scrolling, keys, drags and swipes do nothing, and can't slow it. |
+| After the Fall | Walk back (S / scroll up) | You stop at the landing: the way back up is gone. |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
 | Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
@@ -275,7 +277,7 @@ A `SegmentDefinition` is a kind of segment:
 
 `placeSegment` puts a plan at the previous segment's end.
 
-**The generator** (`WorldGenerator.ts`) builds the castle from a seed. Segment `id`'s variations come from `hash(seed, id)`, so a seed always builds the same castle. It starts with the Gate, and the first segment after it is always a Threshold. After that it picks a kind by weight (`segments/registry.ts`) and never picks the same kind twice in a row, except for Tatami Room runs. Each new segment's start is the previous one's end. `update(progress)`:
+**The generator** (`WorldGenerator.ts`) builds the castle from a seed. Segment `id`'s variations come from `hash(seed, id)`, so a seed always builds the same castle. It always opens the same way, whatever the seed or the dev panel's forced kind: the Gate, a Threshold, **the Fall** and the Suspended Walkway the Fall lands on (rooms 0 to 3, see *The Fall* below). After that it picks a kind by weight (`segments/registry.ts`) and never picks the same kind twice in a row, except for Tatami Room runs. Each new segment's start is the previous one's end. `update(progress)`:
 
 - Generates ahead so that at least **3 segments and 32 m** of walk lie in front of the player (short rooms come in runs).
 - Keeps the window to mount: **1 segment behind** to 3+ ahead. The window grows as soon as it has to, but only shrinks once the player is 1.5 m past a boundary, so pacing back and forth over a boundary doesn't mount and unmount the same segment.
@@ -338,12 +340,56 @@ The shader count stays flat while you walk (19–20 in the dev panel).
 **How to test:** run `npm run dev`, click **Enter the castle**, and check that:
 
 1. Walking up to the gate swings its doors open. Through the gate house's back doorway, the first **Threshold** lies beyond: lanterns down both sides of a walkway over the void and a softly glowing tatami runner. **Dev → World → room** reads 0 at the Gate and 1 on the Threshold, and **area** reads 敷居 The Threshold.
-2. Keep walking (or press **skip to next segment** a few times). Segments follow one another with no gap and no jolt where they meet. On a **Suspended Walkway**, the camera turns and rises with the curve and arch, and pavilions drift in the dark around it.
+2. Walk off the end of the Threshold: THE FALL plays (see its own test steps below) and lands you on a **Suspended Walkway**. Keep walking (or press **skip to next segment** a few times). Segments follow one another with no gap and no jolt where they meet. On a **Suspended Walkway**, the camera turns and rises with the curve and arch, and pavilions drift in the dark around it.
 3. Pick **The Shoji Corridor** in **next kind** and skip four times: a long lit hall with wall lanterns at eye level and a vermilion portal. Repeat for **The Open Gallery** (shoji on one side, the void and floating pavilions on the other).
 4. Pick **The Tatami Room** and skip four times. Walk in: about 1.5 m in, the far doors slide apart onto a nearly identical room. Its red scroll hangs somewhere else and a corner lantern is gone. The next room changes again.
 5. Walk back (**S** or scroll up): the segments behind are there again, exactly as they were, and doors you opened are still open.
 6. In **renderer**, the shader count doesn't climb as new segments appear. The draw calls stay in the ranges above.
-7. Open `/?seed=42` twice: the same castle both times (Threshold, Open Gallery, Suspended Walkway, Open Gallery, Suspended Walkway, two Tatami Rooms…). Without `?seed`, a different castle each visit.
+7. Open `/?seed=42` twice: the same castle both times (Threshold, the Fall, Suspended Walkway, Open Gallery, Suspended Walkway, two Tatami Rooms…). Without `?seed`, a different castle each visit.
+
+### The Fall
+
+A scripted transition after the first Threshold: the bridge breaks and you fall about 120 m through a shaft of impossible architecture, landing on a Suspended Walkway. It plays once per visit.
+
+**In the world** (`src/world/segments/fall/`). The Fall is a segment of its own, `fall` (落下 *The Fall*). The generator always places it as room 2, between the first Threshold and a Suspended Walkway, and it is never picked at random (`RandomSegmentKind` leaves it out).
+
+- **Its walk is only the deck.** An 8 m bridge of old cross planks continues the Threshold. Every plank is split down the middle, and a few are already missing toward the far end. Its exit (where the walkway starts) is 120 m below and 8 m ahead. This is the one place where the next segment doesn't begin where the walk ends: the camera is scripted across the gap. When you land, `WorldPath.sealBefore()` closes the walk behind you, so walking back stops at the landing.
+- **The deck** (`CollapsingDeck.tsx`, `deckLayout.ts`): 60-odd plank halves and 8 short stringers in two instanced meshes. When the Fall starts, a GSAP timeline cracks each plank (the halves part and their inner ends dip), then drops it 110 m into the fog with a slight random turn (`addPieceFall`). Matrices are rewritten only while that plays, and the deck stays gone if it ever mounts again.
+- **The shaft** (`shaftLayout.ts`, `FallShaft.tsx`): everything you fall past, generated only for the Fall from the segment's seed and fully instanced (about 30 draw calls):
+  - **hanging pillars** (`HangingPillars.tsx`): 13–18 shafts hanging out of the dark, each ending in a cross-shaped base (two crossed beams, a cap, a foot under each arm end) with a lantern beneath.
+  - **upside-down rooms** (`InvertedRooms.tsx`): 6 rooms hung floor-up, with glowing shoji walls and the roof pointing down.
+  - **floating stairs** (`FloatingStairs.tsx`): 7–9 flights with no support, some level (with a lantern on the landing), some tilted, some upside down.
+  - **lit towers** (`LitTowers.tsx`): 7 towers of 4–7 stories ringed with shoji, mostly lit, further out. Some hang roof-first.
+  - **Placement.** A placer keeps every piece at least 5 m clear of the line the camera falls along and away from each other. High up it keeps them in front of the deck (the Threshold's and Gate's piers hang behind it). Low down it keeps them out of the corridor above the walkway, where its suspension cords rise. The shaft only mounts once you are on the Threshold (room 1), so it costs nothing at the Gate, and compiles its shaders right then.
+  - **Roofs** come from the kit's new `RoofInstances.tsx`, which shares `roofGeometry.ts` with `Roof.tsx`.
+
+**The script** (`src/scene/fall/FallDirector.tsx`, times in `world/segments/fall/timing.ts`, feel in `scene/fall/tuning.ts`). When your progress reaches the deck:
+
+1. **0 s.** `useFallStore` goes to `falling`. This locks all input (`usePlayerInput` ignores it and lets go of held keys and drags) and stands `Player` down. The HUD crossfades to **THE FALL 落下, N° 002**. The camera takes over from exactly where it was, stumbles forward with your walking momentum, centers and looks down at the deck. A warm light carried just ahead of the view starts to glow.
+2. **0.2–0.9 s.** The planks ahead split and drop away, in a ripple running away from your feet.
+3. **1.1–1.4 s.** The planks you stand on sag, then give.
+4. **1.4–7.6 s, the fall.** The camera pitches 70° down and falls, accelerating for 4.6 s (gravity-like, up to about 39 m/s), then braking for 1.6 s. It drifts 8 m forward as it goes, past pillars, rooms, stairs and towers rushing upward. With speed:
+   - the field of view widens by up to 7°
+   - the vignette closes in (`PostEffects`)
+   - the fog thins so more of the shaft shows
+   - embers streak upward past the camera (`FallStreaks.tsx`: 260 instanced streaks, longer and brighter the faster you fall)
+   - the camera's roll wobbles gently
+5. **5.7–7.6 s.** It levels out while braking, between the walkway's hanging cords, and lands softly with a small knee-bend and nod.
+6. **8.45 s.** The way back is sealed, you're placed at the walkway's start (exactly where the camera already is), and input unlocks.
+
+Scrolling, keys and swipes during the fall do nothing: the landing comes at the same moment whatever you press. With `prefers-reduced-motion` there is no roll wobble and no FOV change. Teleporting past the Fall with the dev panel skips it, and the way back is still sealed.
+
+`fallFx.ts` carries the current fall speed to the vignette and the streaks each frame without re-rendering anything. The streak shader compiles at load (it draws invisibly for a few frames), so nothing compiles as the fall begins.
+
+**How to test:** run `npm run dev`, open `/?seed=42`, click **Enter in silence**, and walk the Threshold (W, or **Dev → World → skip to next segment** once from the Gate, then walk). Check that:
+
+1. Stepping onto the old planks past the last lanterns crossfades the area to **THE FALL 落下 / N° 002**. Scrolling, W/S and dragging stop doing anything.
+2. The planks ahead split in two and drop away into the dark, nearest first. A moment later the ones under you go.
+3. The view tips down and you fall faster and faster: ember streaks rush upward, the edges darken, the view widens and rolls slightly. Glowing shoji rooms, cross-based pillars with lanterns and lit towers flash past.
+4. Hold S and scroll up hard during the fall: it doesn't slow. The landing comes about 8.5 s after you stepped onto the deck either way.
+5. Near the bottom it slows and levels, coming down between the walkway's cords. It lands softly at the start of the **Suspended Walkway 懸橋, N° 003** with lanterns ahead, and walking works again at once.
+6. Walk back (S): you stop at the landing.
+7. **Dev → World → renderer** stays around 130–140 draw calls during the fall. The shader count doesn't change during it: the streaks compile at load, and the shaft's instanced roofs compile as soon as it mounts on the Threshold (`FallShaft` calls `compileAsync`).
 
 ### The HUD
 
@@ -406,6 +452,7 @@ src/
     useWorldStore.ts    Where you are: area, kanji, room number (and furthest), seed, dev's forced kind
     footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
+    useFallStore.ts     The Fall's phase (idle / falling / done) and where the player stands on the deck
   ui/
     TitleScreen.tsx     Title overlay: layout, intro fade, enter and fade-out logic
     TitleScreen.css
@@ -444,9 +491,14 @@ src/
     Atmosphere.tsx      Void background and FogExp2
     Starfield.tsx       Twinkling star sphere (shader points)
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
-    PostEffects.tsx     Bloom, tone mapping, vignette, grain
+    PostEffects.tsx     Bloom, tone mapping, vignette (closes in during the Fall), grain
     IntroCameraRig.tsx  GSAP dolly from far back to the start of the bridge
-    Player.tsx          First-person walker: smoothing, camera on the path, head-bob, look, footsteps
+    Player.tsx          First-person walker: smoothing, camera on the path, head-bob, look, footsteps (stands down during the Fall)
+    fall/
+      FallDirector.tsx  THE FALL's script: input lock, GSAP camera timeline, carried light, FOV / fog, landing, seal
+      FallStreaks.tsx   Embers streaking upward during the fall (instanced shader quads)
+      fallFx.ts         Current fall speed, read by the vignette and streaks each frame
+      tuning.ts         Pitch, FOV kick, wobble, vignette, carried light, fog
     player/
       tuning.ts         Every movement and look constant (eye height, speeds, bob, limits)
       usePlayerInput.ts Wheel, keys, mouse drag, touch swipe and mouse look-around
@@ -487,10 +539,12 @@ src/
       tatamiLayout.ts   Traditional tatami layout search (no four-corner meetings)
       TatamiFloor.tsx   Tatami mats with dark borders
       Roof.tsx          Curved, extruded temple roof with upturned corners
+      roofGeometry.ts   The roof's geometry builder, shared by Roof and RoofInstances
+      RoofInstances.tsx Identical roofs in three draw calls (any pitch, e.g. upside down)
   world/                Level generation
     segment.ts          Segment, SegmentDefinition and SegmentPlan types; placeSegment, straightPlan, toWorld
     WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, attaches each start to the last end, forgets old ones
-    WorldPath.ts        Every segment's path joined into one walk, by distance
+    WorldPath.ts        Every segment's path joined into one walk, by distance; sealBefore() closes it behind the Fall
     World.tsx           Mounts the window of segments; updates walkable bounds and the world store
     SegmentView.tsx     One segment's component in a group at its start transform
     Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill
@@ -499,10 +553,13 @@ src/
       pavilionLayout.ts Floating pavilion proportions and layout
       FloatingPavilion.tsx  A pavilion hanging in the void, gently bobbing
     segments/
-      registry.ts       The five random kinds and their weights
+      registry.ts       The five random kinds and their weights (the Gate and the Fall are scripted)
       common.ts         Bay size, pier pairs, lantern phases
       shojiWall.ts      Shoji wall along the walk (posts, beams, panels, transoms) and lit patterns
       threshold/        The Threshold: layout.ts, Threshold.tsx, definition.ts
+      fall/             The Fall: layout.ts (dimensions, plan), timing.ts (the script's times), deckLayout.ts,
+                        CollapsingDeck.tsx, shaftLayout.ts (placer + pillars, rooms, stairs, towers), FallShaft.tsx,
+                        HangingPillars.tsx, InvertedRooms.tsx, FloatingStairs.tsx, LitTowers.tsx, TheFall.tsx, definition.ts
       walkway/          The Suspended Walkway: layout.ts (curve, planks, rails, posts), SuspendedWalkway.tsx, definition.ts
       corridor/         The Shoji Corridor: layout.ts, ShojiCorridor.tsx, definition.ts
       gallery/          The Open Gallery: layout.ts, OpenGallery.tsx, definition.ts
@@ -535,7 +592,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 7. The guide scroll
 - [x] 8. The endless segment system
 - [x] 9. The HUD
-- [ ] 10. The Fall
+- [x] 10. The Fall
 - [ ] 11. The distant castle
 - [ ] 12. Junctions and stairs
 - [ ] 13. Special chambers

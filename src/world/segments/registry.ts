@@ -5,8 +5,11 @@ import { tatamiDefinition } from './tatami/definition'
 import { thresholdDefinition } from './threshold/definition'
 import { walkwayDefinition } from './walkway/definition'
 
-/** The kinds the generator picks from at random (the Gate only ever comes first). */
-export type RandomSegmentKind = Exclude<SegmentKind, 'gate'>
+/**
+ * The kinds the generator picks from at random. The Gate and the Fall are scripted: they only
+ * ever come in the castle's fixed opening (see `WorldGenerator`).
+ */
+export type RandomSegmentKind = Exclude<SegmentKind, 'gate' | 'fall'>
 
 export const SEGMENT_DEFINITIONS: Record<RandomSegmentKind, SegmentDefinition<unknown>> = {
   threshold: thresholdDefinition,

@@ -8,6 +8,8 @@ import World from '../world/World'
 import { WorldGenerator } from '../world/WorldGenerator'
 import Atmosphere from './Atmosphere'
 import DriftingMotes from './DriftingMotes'
+import FallDirector from './fall/FallDirector'
+import FallStreaks from './fall/FallStreaks'
 import IntroCameraRig from './IntroCameraRig'
 import LightPool from './lighting/LightPool'
 import Player from './Player'
@@ -54,6 +56,8 @@ export default function CastleCanvas() {
         <DriftingMotes count={500} volume={[14, 8, 14]} rise={0.05} size={0.035} brightness={0.35} flicker={0} seed={2} />
         {/* Embers: a few bright, flickering sparks that rise faster and glow. */}
         <DriftingMotes count={160} volume={[16, 10, 16]} rise={0.22} size={0.07} brightness={2.5} flicker={1} seed={3} />
+        {/* Embers streaking upward past the camera, only during the Fall. */}
+        <FallStreaks />
         {/* Every lantern borrows one of these lights; the count never changes, so shaders compile once. */}
         <LightPool />
         <Backdrop />
@@ -62,6 +66,8 @@ export default function CastleCanvas() {
         <IntroCameraRig />
         {/* Takes the camera over from the intro rig once it arrives. */}
         <Player path={generator.path} />
+        {/* The scripted drop after the first Threshold: owns the camera while it runs. */}
+        <FallDirector generator={generator} />
         <PostEffects />
         {import.meta.env.DEV && <RenderStats />}
       </Canvas>

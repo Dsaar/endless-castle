@@ -1,5 +1,6 @@
 import { createRandom, hashSeed, pickWeighted } from '../lib/random'
 import { placeSegment, type Segment, type SegmentDefinition, type SegmentKind } from './segment'
+import { fallDefinition } from './segments/fall/definition'
 import { gateDefinition } from './segments/gate/definition'
 import { SEGMENT_DEFINITIONS, SEGMENT_WEIGHTS, type RandomSegmentKind } from './segments/registry'
 import { WorldPath } from './WorldPath'
@@ -15,6 +16,21 @@ export const SEGMENT_HISTORY = 24
 /** The window grows as soon as it must, but only shrinks once the player is this far past (meters). */
 const HYSTERESIS = 1.5
 
+/**
+ * The castle always opens the same way, whatever the seed or the dev panel's forced kind:
+ * the Gate, a Threshold, the Fall, and the Suspended Walkway the Fall lands on.
+ */
+const OPENING: readonly SegmentKind[] = ['gate', 'threshold', 'fall', 'walkway']
+/** The Fall's id (its room number). */
+export const FALL_SEGMENT_ID = OPENING.indexOf('fall')
+
+/** Every kind's definition, scripted ones included. */
+function definitionOf(kind: SegmentKind): SegmentDefinition<unknown> {
+  if (kind === 'gate') return gateDefinition
+  if (kind === 'fall') return fallDefinition
+  return SEGMENT_DEFINITIONS[kind]
+}
+
 export interface WorldGeneratorOptions {
   /** Dev: when it returns a kind, every new segment is that kind. */
   forcedKind?: () => RandomSegmentKind | null
@@ -24,7 +40,8 @@ export interface WorldGeneratorOptions {
  * Generates the endless castle one segment at a time, from a seed. Segment `id`'s random
  * variations come from `hash(seed, id)`, so a seed always builds the same castle.
  *
- * Starts with the Gate. Each new segment's start is the previous one's end. `update(progress)`
+ * Starts with the fixed OPENING (Gate, Threshold, Fall, Suspended Walkway), then picks at
+ * random. Each new segment's start is the previous one's end. `update(progress)`
  * keeps at least SEGMENTS_AHEAD segments (and MIN_DISTANCE_AHEAD meters) generated ahead of the
  * player, works out which segments should be mounted (`first` … `last`, ids), and forgets old
  * ones. Pure logic: `World` mounts the window.
@@ -103,8 +120,17 @@ export class WorldGenerator {
     const rand = createRandom(hashSeed(this.seed, id))
     const forced = this.options.forcedKind?.() ?? null
     const startDistance = previous.startDistance + previous.length
-    const previousDef: SegmentDefinition<unknown> =
-      previous.kind === 'gate' ? gateDefinition : SEGMENT_DEFINITIONS[previous.kind]
+    const context = { id, previous, heading: previous.end.yaw }
+
+    // The opening is fixed: no forced kinds, no runs.
+    const opening = OPENING[id]
+    if (opening !== undefined) {
+      const definition = definitionOf(opening)
+      this.segments.push(placeSegment(definition, definition.generate(rand, context), id, previous.end, startDistance))
+      return
+    }
+
+    const previousDef = definitionOf(previous.kind)
 
     // Continue a run (nearly identical rooms), or pick a fresh kind.
     const continuing =
@@ -116,16 +142,16 @@ export class WorldGenerator {
       return
     }
 
-    const kind = forced ?? (id === 1 ? 'threshold' : pickKind(rand, previous.kind))
+    const kind = forced ?? pickKind(rand, previous.kind)
     const definition = SEGMENT_DEFINITIONS[kind]
-    const params = definition.generate(rand, { id, previous, heading: previous.end.yaw })
+    const params = definition.generate(rand, context)
     this.segments.push(placeSegment(definition, params, id, previous.end, startDistance))
   }
 }
 
 /** A weighted pick that never repeats the previous kind (runs are handled separately). */
 function pickKind(rand: () => number, previous: SegmentKind): RandomSegmentKind {
-  const weights: Partial<Record<RandomSegmentKind, number>> = { ...SEGMENT_WEIGHTS }
-  if (previous !== 'gate') delete weights[previous]
-  return pickWeighted(rand, weights)
+  const weights: Partial<Record<SegmentKind, number>> = { ...SEGMENT_WEIGHTS }
+  delete weights[previous]
+  return pickWeighted(rand, weights as Partial<Record<RandomSegmentKind, number>>)
 }

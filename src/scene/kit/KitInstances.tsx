@@ -5,7 +5,8 @@ import type { InstanceTransform } from './types'
 interface KitInstancesProps {
   /** Shared geometry, drawn once per item. Not disposed here. */
   geometry: BufferGeometry
-  material: Material
+  /** One material, or one per geometry group. */
+  material: Material | Material[]
   items: readonly InstanceTransform[]
 }
 

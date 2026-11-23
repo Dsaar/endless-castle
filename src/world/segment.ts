@@ -4,7 +4,7 @@ import type { Random } from '../lib/random'
 import type { Vec3 } from '../scene/kit/types'
 
 /** Every kind of segment the castle is built from. */
-export type SegmentKind = 'gate' | 'threshold' | 'walkway' | 'corridor' | 'gallery' | 'tatami'
+export type SegmentKind = 'gate' | 'threshold' | 'fall' | 'walkway' | 'corridor' | 'gallery' | 'tatami'
 
 /**
  * A place and a facing at floor level. `yaw` 0 faces -Z; positive turns left (toward -X),
