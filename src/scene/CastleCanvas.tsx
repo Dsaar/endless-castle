@@ -7,6 +7,7 @@ import { INTRO_START } from '../world/segments/gate/layout'
 import World from '../world/World'
 import { WorldGenerator } from '../world/WorldGenerator'
 import Atmosphere from './Atmosphere'
+import DistantCastle from './distant/DistantCastle'
 import DriftingMotes from './DriftingMotes'
 import FallDirector from './fall/FallDirector'
 import FallStreaks from './fall/FallStreaks'
@@ -61,6 +62,8 @@ export default function CastleCanvas() {
         {/* Every lantern borrows one of these lights; the count never changes, so shaders compile once. */}
         <LightPool />
         <Backdrop />
+        {/* Towers and rooms floating all around, 40 to 300 m out, recycled as you move. */}
+        <DistantCastle generator={generator} />
         {/* The Gate, then the endless castle: about 3 segments ahead and 1 behind. */}
         <World generator={generator} />
         <IntroCameraRig />

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Leva, button, monitor, useControls } from 'leva'
-import { frameStats } from '../scene/frameStats'
+import { distantCastleStats, frameStats } from '../scene/frameStats'
 import { onFootstep } from '../state/footsteps'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
 import { useFigureStore } from '../state/useFigureStore'
@@ -15,6 +15,10 @@ const readSpeed = () => usePlayerStore.getState().speed
 let footstepCount = 0
 const readFootsteps = () => footstepCount
 const readCalls = () => `${frameStats.calls} calls, ${(frameStats.triangles / 1000).toFixed(0)}k tris, ${frameStats.programs} shaders`
+const readDistant = () => {
+  const d = distantCastleStats
+  return `${d.pieces} pieces (${d.near} near, ${d.queued} queued), ${d.ms.toFixed(2)} ms (peak ${d.peakMs.toFixed(2)})`
+}
 // Strings, because leva shows numbers to two significant figures.
 const readSeed = () => String(useWorldStore.getState().seed)
 const readRoom = () => {
@@ -107,6 +111,7 @@ export default function DevPanel() {
   useControls('World', {
     seed: monitor(readSeed, { interval: 500 }),
     renderer: monitor(readCalls, { interval: 250 }),
+    'distant castle': monitor(readDistant, { interval: 250 }),
     room: monitor(readRoom, { interval: 100 }),
     area: monitor(readArea, { interval: 100 }),
     'next kind': {

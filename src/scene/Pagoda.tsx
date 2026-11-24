@@ -1,19 +1,8 @@
-import {
-  BoxGeometry,
-  BufferAttribute,
-  Color,
-  CylinderGeometry,
-  DoubleSide,
-  InstancedMesh,
-  LatheGeometry,
-  MeshBasicMaterial,
-  Object3D,
-  Vector2,
-  type BufferGeometry,
-} from 'three'
+import { BoxGeometry, Color, CylinderGeometry, DoubleSide, InstancedMesh, MeshBasicMaterial, Object3D, type BufferGeometry } from 'three'
 import { mixPalette } from '../lib/color'
 import { createRandom } from '../lib/random'
 import { applyDistantHaze, type DistantHazeOptions } from './distantHaze'
+import { flaredRoof } from './flaredRoof'
 import { getUnitPlane, mergeAndDispose } from './kit/geometry'
 import type { Vec3 } from './kit/types'
 import { useDisposable } from './kit/useDisposable'
@@ -39,7 +28,6 @@ export interface PagodaProps {
 const HAZE: DistantHazeOptions = { densityScale: 0.5, bankBottom: -8, bankTop: 6 }
 const WINDOW_BRIGHTNESS = 3.2
 const ROOF_SEGMENTS = 48
-const SQRT2 = Math.SQRT2
 
 let materials: { body: MeshBasicMaterial; roof: MeshBasicMaterial; window: MeshBasicMaterial } | null = null
 
@@ -150,7 +138,7 @@ function buildPagoda(tiers: number, baseWidth: number, tierHeight: number, seed:
     const halfIn = top ? w * 0.08 : widthAt(i + 1) / 2
     const halfOut = w / 2 + w * 0.3
     const rise = (halfOut - halfIn) * (top ? 0.7 : 0.45)
-    const roof = flaredRoof(halfIn, w / 2, halfOut, rise, rise * 0.45, 0.28)
+    const roof = flaredRoof({ halfIn, halfWall: w / 2, halfOut, rise, lift: rise * 0.45, thick: 0.28, segments: ROOF_SEGMENTS })
     roof.translate(0, y, 0)
     roofParts.push(roof)
     roofBelow = rise
@@ -197,52 +185,4 @@ function buildPagoda(tiers: number, baseWidth: number, tierHeight: number, seed:
       windows.dispose()
     },
   }
-}
-
-/**
- * A square hip roof with concave slopes and upturned corners, lathed from a profile and then
- * squared off. The top surface rises from the eave tips (y = 0, half-width `halfOut`) to the
- * next story's wall (`halfIn`, y = `rise`); the underside runs back to this story's wall at
- * `halfWall`. Vertex colors: dark tiles on top, a faint warm glow underneath from the windows.
- */
-function flaredRoof(halfIn: number, halfWall: number, halfOut: number, rise: number, lift: number, thick: number) {
-  const STEPS = 12
-  const pts: Vector2[] = []
-  for (let i = 0; i <= STEPS; i++) {
-    const s = i / STEPS
-    pts.push(new Vector2(halfIn + (halfOut - halfIn) * s, rise * Math.pow(1 - s, 1.7)))
-  }
-  const topCount = pts.length
-  pts.push(new Vector2(halfOut, -thick))
-  pts.push(new Vector2(halfWall, 0))
-  pts.push(new Vector2(halfIn * 0.5, 0))
-
-  const geometry = new LatheGeometry(pts, ROOF_SEGMENTS)
-  const pos = geometry.attributes.position
-  const colors = new Float32Array(pos.count * 3)
-  const dark = mixPalette('void', 'cedarDark', 0.12)
-  const glow = mixPalette('cedarDark', 'lantern', 0.4).multiplyScalar(0.55)
-
-  for (let v = 0; v < pos.count; v++) {
-    const x = pos.getX(v)
-    const z = pos.getZ(v)
-    const r = Math.hypot(x, z)
-    // Circle → square: push each ring out to a square of half-width r.
-    const phi = Math.atan2(x, z)
-    const k = 1 / Math.max(Math.abs(Math.sin(phi)), Math.abs(Math.cos(phi)))
-    pos.setX(v, x * k)
-    pos.setZ(v, z * k)
-    // Sweep the corners up, more toward the eaves.
-    const corner = ((k - 1) / (SQRT2 - 1)) ** 3
-    const out = Math.min(1, Math.max(0, (r - halfIn) / (halfOut - halfIn)))
-    pos.setY(v, pos.getY(v) + lift * corner * out * out)
-
-    const c = v % pts.length < topCount ? dark : glow
-    colors[v * 3] = c.r
-    colors[v * 3 + 1] = c.g
-    colors[v * 3 + 2] = c.b
-  }
-  geometry.setAttribute('color', new BufferAttribute(colors, 3))
-  geometry.computeVertexNormals()
-  return geometry
 }

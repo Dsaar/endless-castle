@@ -322,15 +322,16 @@ Every segment keeps its solid pieces inside its own length (end posts are pulled
 - A light fades out as its source nears the edge of the chosen set, so a hand-over is never visible.
 - Flicker is computed with the same function and phase as the lantern's paper (`kit/flicker.ts`), so they pulse together.
 
-The shader count stays flat while you walk (19–20 in the dev panel).
+The shader count stays flat while you walk (19–20 in the dev panel, plus the distant castle's 3, which compile when the canvas mounts).
 
-**Cost** (dev panel, whole frame including post-processing): about 120–150 draw calls on the walkways, galleries and corridors, up to about 195 in a long Tatami Room run (several short rooms mounted), and about 220 at the Gate, whose pieces aren't instanced.
+**Cost** (dev panel, whole frame including post-processing): about 120–150 draw calls on the walkways, galleries and corridors, up to about 195 in a long Tatami Room run (several short rooms mounted), and about 220 at the Gate, whose pieces aren't instanced. The distant castle adds 4 more everywhere.
 
 **Dev tools:**
 
 - **Dev → World** shows:
   - the seed
   - the renderer totals (draw calls, triangles and shader programs per frame, from `RenderStats.tsx`)
+  - the distant castle: pieces alive, how many have their structure, how many are waiting to spawn, and its CPU time last frame (with the worst of the last second)
   - the room number (and furthest)
   - the area
 - **skip to next segment** teleports you to the next segment.
@@ -417,6 +418,59 @@ The in-game overlay, in `src/ui/HUD.tsx` (styles in `src/ui/HUD.css`). It is a f
 7. **案内 GUIDE** opens the guide. The HUD dims behind it, and closing the guide gives focus back to the button.
 8. In DevTools device mode at 375 × 667 and 667 × 375: everything is smaller, GUIDE sits above SOUND, nothing overlaps, and the page doesn't scroll sideways.
 
+### The distant castle
+
+All around the walk, the void is full of more castle: towers and rooms floating in every direction, from 40 m out to 300 m, upright, upside down or leaning, lit windows fading into the fog with distance. It never runs out: pieces are generated around the camera as it moves and recycled behind it. It lives in `src/world/distant/` (what goes where) and `src/scene/distant/` (drawing it).
+
+**The pieces** (`towerDesign.ts`):
+
+- **Towers** (about 70%): 3–6 stories, each narrower and lower than the one below, each under a curved hip roof with swept-up corners, with a pointed cap roof and a finial on top.
+- **Rooms** (about 30%): 1–2 stories, wide and shallow, under a long cap roof.
+- Every piece stands on a floor slab with 2–6 posts dangling underneath (sometimes one long keel).
+- **Windows:** one row of tall windows on all four faces of every story (2–4 per face). Each window is lit or dark on its own (45–90% lit per piece, sometimes a whole story dark), and lit ones vary between lantern amber and shoji cream. Lit or dark is just the instance color.
+- **Poses:** about 17% hang upside down and 24% lean 6–20°.
+- **Movement:** about one piece in ten moves. Some rooms sway sideways along their length, 4–8 m each way over about 80 s, and some rooms and the odd tower turn very slowly (one turn every 3½–9 minutes).
+
+**Where they go.** Space is a grid of 48 × 64 × 48 m cells. 42% of cells hold a piece. Each piece is designed from `hash(seed, cell)`, so a seed always builds the same distant castle, and walking back finds the same towers. Everything a piece can reach (eaves, posts, lean, sway, turn) fits inside its own cell, so pieces never touch each other. Pieces also keep clear of:
+
+- **the near castle** (`walkClearance.ts`). For every height the mounted segments' walk passes through, nothing comes within 26 m below it (the piers) or 20 m above it, at any distance. That way the distant castle can't run into the walk however the walk turns, and you look out over a gap with castle above and below.
+- **the Fall**. A drop gets a 40 m column around its fall line instead, so the shaft stays clear but towers still stand beside it. You fall past their windows, and once you've walked a few steps from the landing, the castle fills in above you.
+- **the two pagodas** by the Gate (their placements moved to `world/backdropLayout.ts`).
+
+**Recycling** (`DistantCastleSystem.ts`). Every time the camera has moved 12 m, the system works out which cells are within 312 m. Cells that came into range queue their piece (nearest first), and cells now beyond 336 m free theirs at once (anything past 300 m is invisible). At most 10 pieces spawn per frame, so a teleport or the Fall's 39 m/s never stalls a frame. When the clearance changes (segments mount or unmount), pieces now inside it fade out and pieces no longer inside it fade in.
+
+**Level of detail.** Every piece has its windows. Only pieces whose nearest point is within about 150 m also get their bodies, slab, posts and roofs (at most 6 per frame). Those parts fade into the fog by 150 m, so they come and go unseen, and far pieces are just window grids.
+
+**Drawing it** (`InstanceBank.ts`, `distantMaterial.ts`, `distantGeometry.ts`): four instanced meshes, so four draw calls:
+
+| Mesh | What | Slots |
+| ---- | ---- | ----- |
+| windows | every piece's windows | 560 pieces × 96 |
+| boxes | stories, slabs, posts, finials (unit boxes, faces shaded by vertex color) | 110 near pieces × 14 |
+| roofs | every story's roof but the top one | 110 × 5 |
+| caps | the pointed top roofs | 110 × 1 |
+
+- **Fixed blocks.** Each piece owns a fixed block of instances in each mesh. Unused instances in a block have a zero matrix, so they draw nothing. Spawning or freeing a piece rewrites and uploads only its blocks (`addUpdateRange`), never the whole buffer.
+- **Unlit.** Everything uses unlit materials: no light reaches 40 m out.
+- **Roofs** share `scene/flaredRoof.ts` with the pagodas: the pagoda's roof builder, moved out of `Pagoda.tsx`. Here it is coarser (about 290 triangles) and has a dimmer underside, because from below at 50 m the pagoda's would read as a lit orange slab.
+- **The vertex shader does all the per-frame work.** Two per-instance attributes, `aPivot` (turning axis, born, dies) and `aMotion` (turn rate, sway, heading, phase), drive the movement. The same shader handles every fade:
+  - in from the fog over 2.5 s when a piece appears, and out when it is removed
+  - in between 40 and 75 m
+  - out between 225 and 300 m (structure: 115 to 150 m)
+- **The fog** is the scene's FogExp2 at about a quarter of its density, so the near castle is gone by about 60 m while distant windows still show at 150 m and have dissolved by 250–300 m. It follows the dev panel's fog slider and thins during the Fall like everything else.
+
+**Cost.** In Node over 1.5 km of walking (three seeds), the per-frame update averages under 0.01 ms; 99.9% of frames are under 0.4 ms and the worst is about 1.2 ms. The only real work is a cell rebuild every 12 m (sorting the spawn queue) and spawning. Filling the whole ring when the canvas mounts takes about 18 ms, once. The dev panel shows about 0.1–0.4 ms in the browser. The GPU draws about 300–490 pieces: some 45 windows each (about 40k instances in all), plus the structure of 20–45 near pieces. Over 1.5 km on three seeds the test found no piece within the walk's clearance and no piece outside its cell.
+
+**How to test:** run `npm run dev`, open `/?seed=42` and click **Enter in silence**. Then check that:
+
+1. At the Gate, faint grids of lit windows hang in the dark above the gate house, beyond the pagodas. Drag to look up: towers and rooms float overhead, some upside down or leaning, posts dangling. The nearest have dark bodies and curved roofs. Further out they are only windows, dimmer with distance, until they fade into the black.
+2. **Dev → World → distant castle** reads about 300 pieces, around 20 near, 0 queued, and a fraction of a millisecond.
+3. Walk off the Threshold into **the Fall**. Window grids stream upward past you on every side, and below you.
+4. After landing, walk a few steps and look up and to the sides: the castle fills in above the walkway (the piece count climbs to about 430). Nothing distant ever comes near the walk itself.
+5. Keep walking, or press **skip to next segment** a few times: the distant castle goes on in every direction. The queue empties within a few frames, and nothing pops in or out at the edges.
+6. Stand still and watch a room for a minute: a few drift slowly sideways or turn.
+7. Open `/?seed=42` again: the same towers in the same places. Drag the **Fog → density** slider: the distant castle thickens and thins with the rest.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -459,7 +513,7 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, room, area, next kind, skip), guide / figure buttons, HUD subtitle / sound buttons (dev builds only)
+    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide / figure buttons, HUD subtitle / sound buttons (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
@@ -486,7 +540,7 @@ src/
     KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
     KitOverlay.css
   scene/                3D components (R3F)
-    CastleCanvas.tsx    The <Canvas>: renderer settings, camera, light pool, backdrop, world generator (seeded), player
+    CastleCanvas.tsx    The <Canvas>: renderer settings, camera, light pool, backdrop, distant castle, world generator (seeded), player
     CastleCanvas.css    Full-screen layer behind the UI, fade-in
     Atmosphere.tsx      Void background and FogExp2
     Starfield.tsx       Twinkling star sphere (shader points)
@@ -508,9 +562,16 @@ src/
       LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades
       PooledLight.tsx   Registers one source at its world position (instead of <pointLight>)
     RenderStats.tsx     Dev: draw calls, triangles and shader programs per frame
-    frameStats.ts       Where RenderStats leaves them for the dev panel
+    frameStats.ts       Where RenderStats (and the distant castle) leave their numbers for the dev panel
     Pagoda.tsx          Distant multi-story pagoda with lit window grids
+    flaredRoof.ts       Square hip roof with concave slopes and swept-up corners (pagodas, distant castle)
     distantHaze.ts      Thinner fog + low fog bank for far scenery (material patch)
+    distant/            The distant castle (drawing)
+      DistantCastle.tsx The component: four instanced meshes, one update per frame
+      DistantCastleSystem.ts  Cells around the camera, spawn queue, recycling, near / far detail, stats
+      InstanceBank.ts   An instanced mesh in fixed per-piece blocks with partial uploads; slot allocator
+      distantMaterial.ts  Unlit material patch: motion, fades in / out, thin haze (all in the shader)
+      distantGeometry.ts  Shaded unit box, window quad, story and cap roofs
     renderer.ts         WebGL settings shared by every canvas
     KitView.tsx         ?kit dev view: every kit piece in a row, each under a lantern
     KitCameraRig.tsx    OrbitControls + GSAP glide between kit pieces
@@ -548,6 +609,10 @@ src/
     World.tsx           Mounts the window of segments; updates walkable bounds and the world store
     SegmentView.tsx     One segment's component in a group at its start transform
     Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill
+    backdropLayout.ts   Where the pagodas stand, and the space around them to keep clear
+    distant/            The distant castle (what goes where)
+      towerDesign.ts    Cell grid, one tower or room per cell from hash(seed, cell), its parts
+      walkClearance.ts  The space the near castle needs: a slab per walk height, a column per drop
     useProgressTrigger.ts  Fire once when the player reaches a distance (doors)
     pieces/
       pavilionLayout.ts Floating pavilion proportions and layout
@@ -593,7 +658,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 8. The endless segment system
 - [x] 9. The HUD
 - [x] 10. The Fall
-- [ ] 11. The distant castle
+- [x] 11. The distant castle
 - [ ] 12. Junctions and stairs
 - [ ] 13. Special chambers
 - [ ] 14. The hidden figures
