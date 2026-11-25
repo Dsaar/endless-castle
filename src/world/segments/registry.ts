@@ -1,7 +1,9 @@
 import type { SegmentDefinition, SegmentKind } from '../segment'
+import { abyssDefinition } from './abyss/definition'
 import { corridorDefinition } from './corridor/definition'
 import { crossroadsDefinition } from './crossroads/definition'
 import { galleryDefinition } from './gallery/definition'
+import { invertedDefinition } from './inverted/definition'
 import { junctionDefinition } from './junction/definition'
 import { stairwellDefinition } from './stairwell/definition'
 import { tatamiDefinition } from './tatami/definition'
@@ -24,12 +26,16 @@ export const SEGMENT_DEFINITIONS: Record<RandomSegmentKind, SegmentDefinition<un
   junction: junctionDefinition,
   crossroads: crossroadsDefinition,
   stairwell: stairwellDefinition,
+  inverted: invertedDefinition as SegmentDefinition<unknown>,
+  abyss: abyssDefinition as SegmentDefinition<unknown>,
 }
 
 /**
  * How often each kind is picked. The previous kind is never picked twice in a row. The Forking
  * Hall is never picked: it comes on a schedule, every 3 to 5 rooms. The other two forks never
- * come straight after a fork, and the Crossroads never just before a Forking Hall.
+ * come straight after a fork, and the Crossroads never just before a Forking Hall. The two
+ * special chambers are rare; the Central Abyss never comes straight after a fork, nor a
+ * Crossroads straight after it.
  */
 export const SEGMENT_WEIGHTS: Record<RandomSegmentKind, number> = {
   threshold: 0.8,
@@ -40,6 +46,8 @@ export const SEGMENT_WEIGHTS: Record<RandomSegmentKind, number> = {
   junction: 0,
   crossroads: 0.45,
   stairwell: 0.6,
+  inverted: 0.35,
+  abyss: 0.3,
 }
 
 /** Kinds where the walk divides (each definition has a `fork`). */

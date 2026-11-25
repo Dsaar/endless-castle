@@ -1,11 +1,14 @@
 import { useEffect } from 'react'
 import { Leva, button, monitor, useControls } from 'leva'
 import { distantCastleStats, frameStats } from '../scene/frameStats'
+import { emitBiwa, onBiwa } from '../state/biwa'
+import { cameraFx } from '../state/cameraFx'
 import { onFootstep } from '../state/footsteps'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
 import { useFigureStore } from '../state/useFigureStore'
 import { useGameStore } from '../state/useGameStore'
 import { usePlayerStore } from '../state/usePlayerStore'
+import { useShiftStore } from '../state/useShiftStore'
 import { useSubtitleStore } from '../state/useSubtitleStore'
 import { useWorldStore } from '../state/useWorldStore'
 import { RANDOM_SEGMENT_KINDS, SEGMENT_DEFINITIONS, type RandomSegmentKind } from '../world/segments/registry'
@@ -29,6 +32,10 @@ const readJunction = () => {
   const n = useWorldStore.getState().untilJunction
   return Number.isFinite(n) ? (n <= 0 ? 'next room' : `after ${n} more room${n === 1 ? '' : 's'}`) : 'not yet'
 }
+let biwaCount = 0
+let lastBiwa = 'none yet'
+const readBiwa = () => `${biwaCount} (last: ${lastBiwa})`
+const readRoll = () => `${Math.round((cameraFx.roll * 180) / Math.PI)}°`
 const readArea = () => {
   const w = useWorldStore.getState()
   return `${w.kanji}  ${w.area}`
@@ -58,6 +65,14 @@ export default function DevPanel() {
     () =>
       onFootstep(() => {
         footstepCount++
+      }),
+    [],
+  )
+  useEffect(
+    () =>
+      onBiwa((event) => {
+        biwaCount++
+        lastBiwa = event.kind ? `${event.reason}, ${event.kind}` : event.reason
       }),
     [],
   )
@@ -125,6 +140,16 @@ export default function DevPanel() {
       onChange: (v: RandomSegmentKind | 'random') => useWorldStore.getState().setForcedKind(v === 'random' ? null : v),
     },
     'skip to next segment': button(() => usePlayerStore.getState().jumpTo(useWorldStore.getState().segmentEnd + 0.5)),
+  })
+
+  // The special chambers and the room shift. The chamber buttons rebuild the rooms ahead at once
+  // and put you at the new room's door; "biwa" plays a room shift where you stand.
+  useControls('Special', {
+    'inverted chamber': button(() => useShiftStore.getState().requestRoom('inverted')),
+    'central abyss': button(() => useShiftStore.getState().requestRoom('abyss')),
+    'biwa (room shift)': button(() => emitBiwa({ reason: 'dev' })),
+    'biwa events': monitor(readBiwa, { interval: 200 }),
+    'camera roll': monitor(readRoll, { interval: 100 }),
   })
 
   // Until the figures exist in the world: mark them found by hand to test the guide's slots.

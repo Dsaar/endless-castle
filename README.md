@@ -54,11 +54,18 @@ npm run lint     # oxlint
 | Stairwell | E, or click **↑** | Take the flight up: you're carried across the deck to its foot, then walk (scroll / W) up it |
 | Stairwell | Q, or click **↓** | Take the flight down, the same way |
 | At a fork | Walk back (S / scroll up) | The buttons go; walk back in to bring them back. After choosing, you can still walk back round the turn or down the stairs and out the way you came. |
+| Inverted Chamber | Walk in | A few steps in, the view rolls over in about 3 s and you walk on the ceiling among the furniture. Dragging still turns the view the way you drag. About 5.5 m before the far door it rolls back (faster if you're running), so you're upright at the door. Walking back out the way you came rolls you back too. |
+| Central Abyss | Walk the bridge, drag to look | One long bridge across the void. Look up, down and sideways at the towers. |
+| Anywhere past the Fall | Stand still for 2 s | A biwa string is plucked: the rooms ahead shift (see *Special chambers*). Once per stop: walk again before it can happen again. Not while you're stopped at a fork. |
+| Anywhere past the Fall | (walking) | Now and then (about once every 90 s of walking, never within 12 s of the last), the rooms shift by themselves |
+| Room shift | (during it, about 2 s) | You can walk inside the room you're in, but not out of it until the new rooms have landed |
+| Castle (dev only) | **Dev → Special → inverted chamber** / **central abyss** | Rebuild the rooms ahead so the next one is that chamber, and teleport to 1.2 m before its door |
+| Castle (dev only) | **Dev → Special → biwa (room shift)** | Shift the rooms where you stand. **biwa events** counts biwa events and shows why the last one came; **camera roll** shows the Inverted Chamber's roll. |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
 | Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
 | Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
-| Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind, including The Forking Hall, The Crossroads and The Stairwell (the 3 already built ahead come first: skip 4 times to reach it). While a kind is forced, the junction schedule is off. |
+| Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind, including The Forking Hall, The Crossroads, The Stairwell, The Inverted Chamber and The Central Abyss (the 3 already built ahead come first: skip 4 times to reach it). While a kind is forced, the junction schedule is off. |
 | Castle (dev only) | **Dev → World → forking hall** | How many rooms until the next Forking Hall is due |
 | Castle        | `?seed=123` in the URL      | Build the castle from that seed (the same seed always builds the same castle). Without it, every visit builds a new one. |
 | Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
@@ -447,6 +454,7 @@ All around the walk, the void is full of more castle: towers and rooms floating 
 - **the near castle** (`walkClearance.ts`). For every height the mounted segments' walk passes through, nothing comes within 26 m below it (the piers) or 20 m above it, at any distance. That way the distant castle can't run into the walk however the walk turns, and you look out over a gap with castle above and below.
 - **the Fall**. A drop gets a 40 m column around its fall line instead, so the shaft stays clear but towers still stand beside it. You fall past their windows, and once you've walked a few steps from the landing, the castle fills in above you.
 - **the two pagodas** by the Gate (their placements moved to `world/backdropLayout.ts`).
+- **the Central Abyss**. Its ring of towers gets an endless column, from far below to far above, so the void inside stays empty and nothing distant runs into a tower (see *Special chambers*).
 
 **Recycling** (`DistantCastleSystem.ts`). Every time the camera has moved 12 m, the system works out which cells are within 312 m. Cells that came into range queue their piece (nearest first), and cells now beyond 336 m free theirs at once (anything past 300 m is invisible). At most 10 pieces spawn per frame, so a teleport or the Fall's 39 m/s never stalls a frame. When the clearance changes (segments mount or unmount), pieces now inside it fade out and pieces no longer inside it fade in.
 
@@ -542,6 +550,66 @@ In the dev panel, a Crossroads with its three previews is about 110 draw calls, 
 7. Pick **The Stairwell** in **next kind** and skip four times. Press Q at each one: down, and down again.
 8. In DevTools device mode at 375 × 667: the buttons sit above the area plate and work by tapping.
 
+### Special chambers
+
+Two rare rooms, and a castle that rearranges itself.
+
+**The Inverted Chamber** 逆さの間 (`world/segments/inverted/`, `scene/invert/InvertDirector.tsx`). A long room (9–12 bays, 16–22 m) built for walking on its ceiling:
+
+- **The room.** 4.55 m wide and 4.46 m tall. Its walls read the same either way up: a tier of shoji at the floor, a beam, and a second tier hung from the ceiling. The floor is bare boards with battens across, like a board ceiling. The ceiling is a tatami floor, face down. Standing on it, upside down, are low tables with cushions either side, a floor lantern in each corner, a folding screen against one wall, and the vermilion scroll. Lanterns "hang" up from the floor. Outside, the roof hangs under the floor and piers rise from the top into the dark.
+- **The doorways.** At the floor tier, the middle two of four panels at each end are open. The ceiling tier is closed: a lit doorway to nowhere. Upside down, it is the real door that looks wrong, high up on the wall.
+- **The roll.** 2.2 m in, `InvertDirector` tweens `cameraFx.roll` (`state/cameraFx.ts`) from 0 to 180° over 3 s (`power2.inOut`). `Player` turns the whole body about a line halfway up the room, so upside down the eye sits 1.6 m below the ceiling, as if standing on it. 5.5 m before the far door it rolls back, timed so you are upright by the door even at a run (never faster than 1.2 s). Walking back out the entrance rolls back in half the time. A teleport snaps the roll.
+- **Looking** while rolled works in the rolled frame (`Player` composes yaw/pitch, then the roll about the view, then the look), so a drag turns the view the way you drag. Head-bob and sway turn with the body.
+- The first time, the subtitle reads *The floor is above you.* / 床が頭上にある。
+- About 25 draw calls.
+
+**The Central Abyss** 奈落 (`world/segments/abyss/`). A huge round void crossed by one long, thin bridge:
+
+- **The bridge** (`layout.ts`, `CentralAbyss.tsx`): 64–84 m of 1.1 m planks on two stringers. It sags 0.8–1.8 m in the middle (a sin² curve with level 1.5 m leads, so it joins its neighbours with matching tangents). It has thin rope rails on slim posts, and a lantern on a post every 8–11 m, alternating sides, with an arm reaching over the walk.
+- **The towers** (`AbyssTowers.tsx`): 12–16 of them stand round a ring just past the bridge's ends, 38–52 m out, except within 40° of the way in and out. Each is a stack of 6–9.5 m stories with flared roofs, rising 14–24 stories above a balcony near the bridge's height and sinking 18–30 stories below it, upside down (a roof under each story). There are three lit windows per face per story, and big lanterns hang at the roof corners every third story. All of it is four instanced draw calls: unlit materials in a thin haze (`applyDistantHaze` at 0.3× the fog), so the towers stay visible 40–150 m out and fade into black far up and far down. They reuse the distant castle's shaded box and flared roof.
+- **The lights** (`AbyssGlow.tsx`, one shader for both): 1,500 lights far out beyond the towers, half scattered and half strung in columns like the windows of towers too far to see; and 700 embers inside the void, rising slowly (about 0.35 m/s) from 60 m below the bridge to 40 m above it and wrapping round. Each is one draw call, and all their motion is in the vertex shader.
+- **Placement.** It never comes straight after a fork, and no Crossroads comes straight after it, so no room built down a Crossroads' other ways reaches into the ring. The distant castle keeps an endless column round the ring clear (`walkClearance.ts`). Its shaders compile when it mounts, a few rooms ahead.
+- About 50–70 draw calls for the whole frame on the bridge.
+
+Both are picked at random like any room (weights 0.35 and 0.3, `segments/registry.ts`), and both can be forced with **next kind**.
+
+**The room shift: the biwa** (`state/biwa.ts`, `scene/shift/`, `world/shift/`, `WorldGenerator.rebuildAhead`):
+
+- **When.** `ShiftDirector` emits a `biwa` event (`emitBiwa`, `onBiwa`, for audio later) in three cases:
+  - after you've stood still for **2 s** (once per stop: you must walk at 0.6 m/s or more before it counts again, and a teleport doesn't count as walking)
+  - **at random** while walking (on average once every 90 s, and only with at least 8 m of the room left ahead)
+  - from **Dev → Special → biwa**
+
+  Never within 12 s of the last one. Never in the opening, during the Fall, with the guide open, while stopped at or turning at a fork, or mid-roll in the Inverted Chamber.
+- **The new walk.** `WorldGenerator.rebuildAhead(progress)` takes away every segment after the room you're in (after the walk out of it, at a fork already chosen). It generates the walk ahead again from a fresh random stream: seeds and React keys are salted with the number of shifts so far, so the new rooms differ and never share a key with the old ones. The new walk starts at the same joint with the same heading, so it always joins on. Every rule carries on: the junction schedule, no repeats, the fork rules. The first new room is never the next of a run (a Tatami echo, a false exit), so something really changes. At a fork still waiting for a choice there is nothing ahead to rebuild: you only get the lurch and the shake.
+- **The motion** (1.5 s, GSAP, `world/shift/shiftMotions.ts`, `scene/shift/runSegmentMotion.ts`):
+  - The rooms that were on screen stay mounted under their old keys and leave, nearest first, 0.1 s apart. Each one slides off sideways, swings down on a hinge at its near end like a trapdoor, or drops into the void.
+  - The new rooms arrive one after another. Each one slides in from the side, swings up from below on the same hinge, rises out of the dark or comes down from above, and settles exactly in place.
+  - The room you're in lurches around you: 0.22 m sideways, 0.1 m down, a 2° turn about where you stand, then back with a small overshoot.
+  - The camera shakes (`cameraFx.shake`, off with `prefers-reduced-motion`).
+  - A fork's previews move with their hall.
+- **How it moves rooms.** `SegmentView` wraps every segment in two groups that stay at rest except during a move, which is a rigid turn about a world pivot plus a translation. Lanterns and pooled lights inside follow their room (`useSegmentMotion`): leaving rooms fade their lights out, arriving ones fade them in.
+- **The walk is held** at the doorway (`generator.holdEnd`) until the new rooms have landed (about 2.1 s), so you never walk onto a room still in flight.
+- The first time, the subtitle reads *A string is plucked. The rooms move.* / 琵琶が鳴る。部屋が動く。
+
+**Checked** in Node, 60 seeds × 1.8 km each, with a room shift about every 33 m (about 3,000 rebuilds) and a random way at every fork:
+
+- Every segment before the anchor is the same object after a rebuild.
+- Ids, room numbers and distances stay consecutive.
+- Joints still meet with the same heading: the worst kink is 0.30° (the halls' turns, as before) and 0.007° of pitch.
+- Every key is unique, Crossroads previews included.
+- Junction gaps are still exactly 3, 4 or 5 rooms (479 / 480 / 509). A room forced from the dev panel can make the next Forking Hall a room late, as **next kind** already can.
+- No mounted walk, Crossroads previews included, comes within 14.8 m of a tower's corner in the Abyss.
+
+**How to test:** run `npm run dev`, open `/?seed=42`, click **Enter in silence**, and skip past the Fall (**Dev → World → skip to next segment** four times, then let it land). Then check that:
+
+1. **Dev → Special → inverted chamber**: you stand 1.2 m before a doorway in a lit, two-tiered shoji wall, with lanterns standing up from the floor inside. Walk in (W): two steps in, *The floor is above you.* appears and the view rolls over in about 3 s (**camera roll** reads 180°). You now stand on tatami among low tables and floor lanterns. The floorboards and lanterns are overhead, and the real doorway is high on the far wall. Drag to look: the view follows the drag. Keep walking: it rolls back before the door, and you walk out upright.
+2. **Dev → Special → central abyss**: you're at the head of a long, thin bridge. Towers of lit windows stand on both sides and fade out far above and below. Embers drift up past the bridge, and faint lights hang far off in the dark. Drag to look up, down and sideways. **renderer** reads about 50–70 calls on the bridge, and the shader count stops climbing once the Abyss has mounted.
+3. Walk, then stand still for 2 s: *A string is plucked. The rooms move.* appears, the room you're in jolts and settles, and the view shakes. Through the door ahead, the next room drops, slides or swings away, and a different one arrives (best seen from the end of the Abyss bridge or a walkway). Try to walk out during it: you stop at the doorway until it's over. Then walk on into the new room: the walk runs on smoothly.
+4. **Dev → Special → biwa (room shift)** does the same at once. **biwa events** counts each one (*still*, *random* or *dev*).
+5. Stop at a fork (the buttons showing) and wait: nothing shifts. Press **biwa** there: the hall lurches and shakes, but nothing ahead changes (nothing is built past an unchosen fork).
+6. Walk back after a shift: the rooms behind you are as they were.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -580,13 +648,16 @@ src/
     useFallStore.ts     The Fall's phase (idle / falling / done) and where the player stands on the deck
     useForkStore.ts     Forks: the one you're waiting at, the way being taken, the ways chosen; choose()
     scriptedWalk.ts     A stretch of walk carried out for the player (the turn at a fork), read by Player
+    cameraFx.ts         The camera's roll (Inverted Chamber) and shake (room shift), tweened by GSAP, read by Player
+    biwa.ts             Biwa events (onBiwa / emitBiwa): the rooms are about to shift
+    useShiftStore.ts    The room shift under way (rooms leaving, every segment's move), rebuild version, dev room requests
   ui/
     TitleScreen.tsx     Title overlay: layout, intro fade, enter and fade-out logic
     TitleScreen.css
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide / figure buttons, HUD subtitle / sound buttons (dev builds only)
+    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide / figure buttons, HUD subtitle / sound buttons, Special (inverted chamber, central abyss, biwa, roll) (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
@@ -614,14 +685,20 @@ src/
     KitOverlay.tsx      Kit view overlay: heading, controls hint, piece buttons, ← → keys
     KitOverlay.css
   scene/                3D components (R3F)
-    CastleCanvas.tsx    The <Canvas>: renderer settings, camera, light pool, backdrop, distant castle, world generator (seeded), player
+    CastleCanvas.tsx    The <Canvas>: renderer settings, camera, light pool, backdrop, distant castle, world generator (seeded), player, directors
     CastleCanvas.css    Full-screen layer behind the UI, fade-in
     Atmosphere.tsx      Void background and FogExp2
     Starfield.tsx       Twinkling star sphere (shader points)
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
     PostEffects.tsx     Bloom, tone mapping, vignette (closes in during the Fall), grain
     IntroCameraRig.tsx  GSAP dolly from far back to the start of the bridge
-    Player.tsx          First-person walker: smoothing, camera on the path, head-bob (per riser on stairs), look, footsteps (stands down during the Fall, follows scripted walks at forks)
+    Player.tsx          First-person walker: smoothing, camera on the path, head-bob (per riser on stairs), look, footsteps (stands down during the Fall, follows scripted walks at forks), roll and shake
+    invert/
+      InvertDirector.tsx  The Inverted Chamber's roll over onto the ceiling and back (GSAP)
+    shift/
+      ShiftDirector.tsx  The biwa: when it sounds (still, random, dev), the rebuild, the moves, shake, hold; dev room requests
+      runSegmentMotion.ts  Plays one segment's move (GSAP) on its wrapper groups
+      tuning.ts         Shift timing, triggers, shake and lurch sizes
     fork/
       ForkDirector.tsx  Where the walk divides: arrival, choosing (resolveFork), the GSAP turn
       useForkInput.ts   A / D / ← / → / W / ↑ / Space / fresh scroll in halls, E / Q on stairs
@@ -638,7 +715,7 @@ src/
     lighting/
       lightSources.ts   Registry of warm light sources (position, intensity, reach, flicker)
       LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades
-      PooledLight.tsx   Registers one source at its world position (instead of <pointLight>)
+      PooledLight.tsx   Registers one source at its world position (instead of <pointLight>); follows its segment in a room shift
     RenderStats.tsx     Dev: draw calls, triangles and shader programs per frame
     frameStats.ts       Where RenderStats (and the distant castle) leave their numbers for the dev panel
     Pagoda.tsx          Distant multi-story pagoda with lit window grids
@@ -667,7 +744,7 @@ src/
       BoxInstances.tsx  Identical cedar boxes, instanced, with world-scaled grain
       MergedBoxes.tsx   One-off boxes merged into a single mesh
       ShojiInstances.tsx  A wall of identical shoji panels in three draw calls
-      LanternInstances.tsx  A row of lanterns in three draw calls, per-instance flicker, pooled lights
+      LanternInstances.tsx  A row of lanterns in three draw calls, per-instance flicker, pooled lights (they follow a moving segment); cords turn with pitch
       HangingScroll.tsx Vermilion hanging scroll
       WoodBeam.tsx      Horizontal beam
       Post.tsx          Vertical post
@@ -682,15 +759,18 @@ src/
       RoofInstances.tsx Identical roofs in three draw calls (any pitch, e.g. upside down)
   world/                Level generation
     segment.ts          Segment, SegmentDefinition, SegmentPlan, ForkSpec and BranchPlan types; placeSegment, straightPlan, toWorld, turnPoint
-    WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, stops at forks (resolveFork), Crossroads previews, the junction schedule, forgets old ones
+    WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, stops at forks (resolveFork), Crossroads previews, the junction schedule, forgets old ones; rebuildAhead (room shifts), segmentAt, holdEnd
     WorldPath.ts        Every segment's path joined into one walk, by distance; sealBefore() closes it behind the Fall
-    World.tsx           Mounts the window of segments (and Crossroads previews); updates walkable bounds and the world store
-    SegmentView.tsx     One segment's component in a group at its start transform
+    World.tsx           Mounts the window of segments (and Crossroads previews, and rooms leaving in a shift); updates walkable bounds (held during a shift) and the world store
+    SegmentView.tsx     One segment's component in a group at its start transform, inside wrappers that play a room shift's move
+    shift/
+      segmentMotion.ts  A segment's move in a room shift (types), and the context lights read to follow it
+      shiftMotions.ts   How rooms leave (slide, hinge, drop), arrive (slide, hinge, rise, descend) and lurch
     Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill
     backdropLayout.ts   Where the pagodas stand, and the space around them to keep clear
     distant/            The distant castle (what goes where)
       towerDesign.ts    Cell grid, one tower or room per cell from hash(seed, cell), its parts
-      walkClearance.ts  The space the near castle needs: a slab per walk height, a column per drop
+      walkClearance.ts  The space the near castle needs: a slab per walk height, a column per drop, an endless column round the Abyss
     useProgressTrigger.ts  Fire once when the player reaches a distance (doors)
     pieces/
       pavilionLayout.ts Floating pavilion proportions and layout
@@ -698,7 +778,7 @@ src/
       hangingStairsLayout.ts  An upside-down flight for a hall ceiling: where, and its pieces
       HangingStairs.tsx A staircase hanging upside down from a ceiling, with an upside-down lantern
     segments/
-      registry.ts       The kinds the generator places and their weights (the Gate and the Fall are scripted; the Forking Hall is scheduled)
+      registry.ts       The kinds the generator places and their weights (the Gate and the Fall are scripted; the Forking Hall is scheduled; the two special chambers are rare)
       common.ts         Bay size, pier pairs, lantern phases
       shojiWall.ts      Shoji wall along the walk (posts, beams, panels, transoms) and lit patterns
       stairs.ts         The castle's one step (riser, tread), flights (treads, risers, stringers), the walking line
@@ -715,6 +795,9 @@ src/
       crossroads/       The Crossroads: Crossroads.tsx, definition.ts (previews)
       stairwell/        The Stairwell: layout.ts (deck, flights, landings, tower, the walk up or down), Stairwell.tsx, definition.ts
       branch/           The walk out of a fork: definition.ts, BranchWalk.tsx (draws nothing)
+      inverted/         The Inverted Chamber: layout.ts (two-tier walls, furniture on the ceiling, roll points), InvertedChamber.tsx, definition.ts
+      abyss/            The Central Abyss: layout.ts (sagging bridge, tower ring, distant lights, embers), CentralAbyss.tsx,
+                        AbyssTowers.tsx (unlit hazed towers, 4 draw calls), AbyssGlow.tsx (shader points), definition.ts
       Gate.tsx          The opening segment: bridge, landing, gate, back glow
       gate/
         definition.ts   The Gate as segment 0
@@ -746,7 +829,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 10. The Fall
 - [x] 11. The distant castle
 - [x] 12. Junctions and stairs
-- [ ] 13. Special chambers
+- [x] 13. Special chambers
 - [ ] 14. The hidden figures
 - [ ] 15. Signs and presence
 - [ ] 16. Audio

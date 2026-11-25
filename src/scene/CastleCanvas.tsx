@@ -13,11 +13,13 @@ import FallDirector from './fall/FallDirector'
 import FallStreaks from './fall/FallStreaks'
 import ForkDirector from './fork/ForkDirector'
 import IntroCameraRig from './IntroCameraRig'
+import InvertDirector from './invert/InvertDirector'
 import LightPool from './lighting/LightPool'
 import Player from './Player'
 import PostEffects from './PostEffects'
 import { CANVAS_DPR, GL_OPTIONS } from './renderer'
 import RenderStats from './RenderStats'
+import ShiftDirector from './shift/ShiftDirector'
 import Starfield from './Starfield'
 import './CastleCanvas.css'
 
@@ -74,6 +76,10 @@ export default function CastleCanvas() {
         <ForkDirector generator={generator} />
         {/* The scripted drop after the first Threshold: owns the camera while it runs. */}
         <FallDirector generator={generator} />
+        {/* The Inverted Chamber: rolls the camera over onto the ceiling and back. */}
+        <InvertDirector generator={generator} />
+        {/* The biwa: the rooms ahead shift when you stand still, or at random. */}
+        <ShiftDirector generator={generator} />
         <PostEffects />
         {import.meta.env.DEV && <RenderStats />}
       </Canvas>

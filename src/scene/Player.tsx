@@ -1,7 +1,8 @@
 import { useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Vector3 } from 'three'
+import { Euler, Quaternion, Vector3 } from 'three'
 import { clamp, damp, smoothDamp, smoothstep, type Spring } from '../lib/math'
+import { cameraFx } from '../state/cameraFx'
 import { emitFootstep } from '../state/footsteps'
 import { scriptedWalk } from '../state/scriptedWalk'
 import { useFallStore } from '../state/useFallStore'
@@ -38,6 +39,7 @@ import {
 } from './player/tuning'
 import { usePlayerInput } from './player/usePlayerInput'
 import type { WalkPath } from './player/walkPath'
+import { SHAKE_MOVE, SHAKE_ROLL, SHAKE_TURN } from './shift/tuning'
 
 interface PlayerProps {
   /**
@@ -58,6 +60,16 @@ const SETTLE_SPEED = 1e-3
 const point = new Vector3()
 const ahead = new Vector3()
 const behind = new Vector3()
+const euler = new Euler(0, 0, 0, 'YXZ')
+const baseTurn = new Quaternion()
+const rollTurn = new Quaternion()
+const lookTurn = new Quaternion()
+const VIEW_AXIS = new Vector3(0, 0, 1)
+
+/** Shake noise at time `t`: two unrelated sines, so it never settles into a rhythm. About ±1. */
+function jolt(t: number, a: number, b: number) {
+  return 0.6 * Math.sin(t * a) + 0.4 * Math.sin(t * b + 1.7)
+}
 
 /**
  * The first-person walker. Eases `progress` toward `targetProgress` (a soft goal, then a
@@ -72,6 +84,11 @@ const behind = new Vector3()
  * At a fork, `ForkDirector` may carry the player a short way (`scriptedWalk`): the quarter turn
  * into a side way, the step across to a flight. On stairs, the head-bob follows the treads (one
  * dip per riser) and the camera only half follows the slope, the way you'd look up a flight.
+ *
+ * `cameraFx` adds two effects. The roll (the Inverted Chamber) turns the whole body about a line
+ * `rollPivot` above the path, so upside down the eye hangs below the ceiling as if standing on
+ * it; the look is applied in the rolled frame, so dragging still turns the view the way you drag.
+ * The shake (a room shift) jitters the eye a little; never with `prefers-reduced-motion`.
  */
 export default function Player({ path }: PlayerProps) {
   const canvas = useThree((s) => s.gl.domElement)
@@ -97,7 +114,7 @@ export default function Player({ path }: PlayerProps) {
     suspended: false,
   })
 
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     if (!useGameStore.getState().introComplete) return
     if (useFallStore.getState().phase === 'falling') {
       motion.current.suspended = true
@@ -212,17 +229,43 @@ export default function Player({ path }: PlayerProps) {
     }
 
     // --- Camera -------------------------------------------------------------------------
-    // Sway sideways, relative to the walking direction.
+    // The eye, across (sway) and up from the path, then turned with the roll about the pivot line.
+    let eyeAcross = sway
+    let eyeUp = EYE_HEIGHT + bobY
+    const roll = cameraFx.roll
+    if (roll !== 0) {
+      const c = Math.cos(roll)
+      const s = Math.sin(roll)
+      const pivot = cameraFx.rollPivot
+      const across = eyeAcross
+      const up = eyeUp - pivot
+      eyeAcross = across * c - up * s
+      eyeUp = pivot + across * s + up * c
+    }
+    const shake = reducedMotion.current ? 0 : cameraFx.shake
+    const t = clock.elapsedTime
+    if (shake > 0) {
+      eyeAcross += SHAKE_MOVE * shake * jolt(t, 31, 47)
+      eyeUp += SHAKE_MOVE * shake * jolt(t, 37, 53)
+    }
+    // Sideways is relative to the walking direction.
     const rightX = Math.cos(baseYaw)
     const rightZ = -Math.sin(baseYaw)
-    camera.position.set(point.x + rightX * sway, point.y + EYE_HEIGHT + bobY, point.z + rightZ * sway)
-    camera.rotation.set(
-      basePitch + m.lookPitch + m.aroundPitch,
-      baseYaw + m.lookYaw + m.aroundYaw,
-      -sway * BOB_ROLL,
+    camera.position.set(point.x + rightX * eyeAcross, point.y + eyeUp, point.z + rightZ * eyeAcross)
+
+    const lookPitch = m.lookPitch + m.aroundPitch + SHAKE_TURN * shake * jolt(t, 29, 43)
+    const lookYaw = m.lookYaw + m.aroundYaw + SHAKE_TURN * shake * jolt(t, 23, 41)
+    const headRoll = -sway * BOB_ROLL + SHAKE_ROLL * shake * jolt(t, 19, 59)
+    if (roll === 0) {
       // Yaw, then pitch, then roll: the horizon stays level whatever the yaw.
-      'YXZ',
-    )
+      camera.rotation.set(basePitch + lookPitch, baseYaw + lookYaw, headRoll, 'YXZ')
+    } else {
+      // Along the path, then rolled about the view, then the look in the rolled frame.
+      baseTurn.setFromEuler(euler.set(basePitch, baseYaw, 0, 'YXZ'))
+      rollTurn.setFromAxisAngle(VIEW_AXIS, roll)
+      lookTurn.setFromEuler(euler.set(lookPitch, lookYaw, headRoll, 'YXZ'))
+      camera.quaternion.copy(baseTurn).multiply(rollTurn).multiply(lookTurn)
+    }
   })
 
   return null

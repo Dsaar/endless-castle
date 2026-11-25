@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useState } from 'react'
 import { useForkStore } from '../state/useForkStore'
 import { usePlayerStore } from '../state/usePlayerStore'
+import { useShiftStore } from '../state/useShiftStore'
 import { useWorldStore } from '../state/useWorldStore'
 import SegmentView from './SegmentView'
 import type { WorldGenerator } from './WorldGenerator'
@@ -18,8 +19,15 @@ interface WorldProps {
  *
  * A Crossroads' previews (the rooms down the ways not yet chosen) mount with it. The chosen
  * one keeps its key when it joins the walk, so it never remounts.
+ *
+ * During a room shift (`useShiftStore.active`), the rooms taken out of the walk stay mounted
+ * under their old keys while they leave, every moving segment gets its move, and the walkable
+ * end is held at the generator's `holdEnd` until the new rooms are in place.
  */
 export default function World({ generator }: WorldProps) {
+  const shift = useShiftStore((s) => s.active)
+  // Re-render when the generator replaced segments, even if the window's ids are the same.
+  useShiftStore((s) => s.version)
   const [range, setRange] = useState(() => {
     generator.update(usePlayerStore.getState().progress)
     return { first: generator.first, last: generator.last }
@@ -35,9 +43,10 @@ export default function World({ generator }: WorldProps) {
       const { first, last, path } = generator
       setWindowIfChanged(first, last)
 
-      if (path.start !== start || path.end !== end) {
+      const walkEnd = Math.min(path.end, generator.holdEnd)
+      if (path.start !== start || walkEnd !== end) {
         start = path.start
-        end = path.end
+        end = walkEnd
         usePlayerStore.getState().setPathBounds(start, end)
       }
 
@@ -75,22 +84,33 @@ export default function World({ generator }: WorldProps) {
     const unsubscribeFork = useForkStore.subscribe((s, prev) => {
       if (s.chosen !== prev.chosen) sync(usePlayerStore.getState().progress)
     })
+    // A room shift began or ended, or the rooms ahead were rebuilt: new segments, a held walk.
+    const unsubscribeShift = useShiftStore.subscribe((s, prev) => {
+      if (s.active !== prev.active || s.version !== prev.version) {
+        current = -1
+        sync(usePlayerStore.getState().progress)
+      }
+    })
     return () => {
       unsubscribePlayer()
       unsubscribeFork()
+      unsubscribeShift()
     }
   }, [generator])
 
+  const motions = shift?.motions
   const mounted = []
   for (let id = range.first; id <= range.last; id++) {
     const segment = generator.byId(id)
     if (!segment) continue
-    mounted.push(<SegmentView key={segment.key} segment={segment} />)
+    mounted.push(<SegmentView key={segment.key} segment={segment} motion={motions?.get(segment.key)} />)
     for (const preview of segment.previews ?? []) {
       // The chosen way is in the walk itself now.
       if (preview.segments[0] === generator.byId(segment.id + 1)) continue
-      for (const s of preview.segments) mounted.push(<SegmentView key={s.key} segment={s} />)
+      for (const s of preview.segments) mounted.push(<SegmentView key={s.key} segment={s} motion={motions?.get(s.key)} />)
     }
   }
+  // Same keys as before they left the walk, so they stay mounted and just move away.
+  for (const s of shift?.departing ?? []) mounted.push(<SegmentView key={s.key} segment={s} motion={motions?.get(s.key)} />)
   return <>{mounted}</>
 }

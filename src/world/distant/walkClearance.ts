@@ -1,4 +1,5 @@
 import type { Vector3 } from 'three'
+import { abyssReach, type AbyssParams } from '../segments/abyss/layout'
 import type { WorldGenerator } from '../WorldGenerator'
 
 /** Below the walk: piers hang up to 18 m, pavilions float a little lower. */
@@ -15,6 +16,8 @@ const DROP = 10
  * this keeps the distant castle clear of it (from the middle of that line).
  */
 const SHAFT_RADIUS = 40
+/** The Central Abyss's ring of towers runs this far up and down (and further): a column with no ends. */
+const ENDLESS = 1e6
 
 const MAX_SLABS = 16
 const MAX_SHAFTS = 4
@@ -27,6 +30,8 @@ const MAX_SHAFTS = 4
  *   over it, at any distance. So the distant castle never runs into the walk however it turns.
  * - **shafts**: for a drop (the Fall), a column around the fall line from the landing to the
  *   deck, and no slab, so distant towers still stand beside the shaft and you fall past them.
+ *   The Central Abyss gets an endless column round its ring of towers too (and its slab), so the
+ *   void inside stays empty and nothing distant runs into a tower.
  */
 export class WalkClearance {
   private slabCount = 0
@@ -55,6 +60,10 @@ export class WalkClearance {
         this.addShaft((s.start.x + s.end.x) / 2, (s.start.z + s.end.z) / 2, low - CLEAR_BELOW, high + CLEAR_ABOVE)
       } else {
         this.addSlab(low, high)
+      }
+      if (s.kind === 'abyss') {
+        // The void's center is halfway along its straight bridge.
+        this.addShaft((s.start.x + s.end.x) / 2, (s.start.z + s.end.z) / 2, -ENDLESS, ENDLESS, abyssReach(s.params as AbyssParams))
       }
     }
 
@@ -97,13 +106,13 @@ export class WalkClearance {
     this.nextSlabs++
   }
 
-  private addShaft(x: number, z: number, low: number, high: number) {
+  private addShaft(x: number, z: number, low: number, high: number, radius = SHAFT_RADIUS) {
     if (this.nextShafts >= MAX_SHAFTS) return
     const o = this.nextShafts * 5
     const c = this.nextShaft
     c[o] = x
     c[o + 1] = z
-    c[o + 2] = SHAFT_RADIUS
+    c[o + 2] = radius
     c[o + 3] = low
     c[o + 4] = high
     this.nextShafts++

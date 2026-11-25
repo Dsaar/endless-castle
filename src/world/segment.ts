@@ -15,6 +15,8 @@ export type SegmentKind =
   | 'junction'
   | 'crossroads'
   | 'stairwell'
+  | 'inverted'
+  | 'abyss'
   | 'branch'
 
 /** A way on from a fork: three ways out of a hall, or a flight up or down. */
