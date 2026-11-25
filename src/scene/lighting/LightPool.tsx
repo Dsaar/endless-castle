@@ -1,8 +1,9 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Vector3, type PointLight } from 'three'
+import { Color, Vector3, type PointLight } from 'three'
 import { palette } from '../../lib/palette'
 import { smoothstep } from '../../lib/math'
+import { finaleFx } from '../../state/finaleFx'
 import { lanternFlicker } from '../kit/flicker'
 import { getLightSources } from './lightSources'
 
@@ -16,6 +17,9 @@ const FADE_BAND = 5
 const BEHIND_PENALTY = 0.6
 
 const forward = new Vector3()
+const LANTERN = new Color(palette.lantern)
+const FINALE_RED = new Color(palette.vermilion)
+const tint = new Color()
 // Best candidates, nearest first. One extra slot remembers the first source left out.
 const bestIndex = new Int32Array(LIGHT_POOL_SIZE + 1)
 const bestScore = new Float32Array(LIGHT_POOL_SIZE + 1)
@@ -24,16 +28,24 @@ const bestScore = new Float32Array(LIGHT_POOL_SIZE + 1)
  * A fixed pool of point lights, handed each frame to the registered light sources nearest
  * the camera (sources ahead win over sources behind). A light fades to nothing as its source
  * approaches the edge of the chosen set, so a hand-over between sources is never visible.
+ * In the finale every light turns from lantern amber to vermilion (`finaleFx.red`).
  * Mounted once per canvas. No allocations in the frame loop.
  */
 export default function LightPool() {
   const lights = useRef<(PointLight | null)[]>([])
+  const red = useRef(0)
 
   useFrame(({ camera, clock }) => {
     const sources = getLightSources()
     const cam = camera.position
     camera.getWorldDirection(forward)
     const t = clock.elapsedTime
+
+    if (finaleFx.red !== red.current) {
+      red.current = finaleFx.red
+      tint.copy(LANTERN).lerp(FINALE_RED, red.current)
+      for (const light of lights.current) light?.color.copy(tint)
+    }
 
     let count = 0
     for (let i = 0; i < sources.length; i++) {

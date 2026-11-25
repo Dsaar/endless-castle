@@ -11,6 +11,8 @@ import DistantCastle from './distant/DistantCastle'
 import DriftingMotes from './DriftingMotes'
 import FallDirector from './fall/FallDirector'
 import FallStreaks from './fall/FallStreaks'
+import FigureWatcher from './figures/FigureWatcher'
+import { WORLD_GROUP_NAME } from './figures/occlusion'
 import ForkDirector from './fork/ForkDirector'
 import IntroCameraRig from './IntroCameraRig'
 import InvertDirector from './invert/InvertDirector'
@@ -67,8 +69,10 @@ export default function CastleCanvas() {
         <Backdrop />
         {/* Towers and rooms floating all around, 40 to 300 m out, recycled as you move. */}
         <DistantCastle generator={generator} />
-        {/* The Gate, then the endless castle: about 3 segments ahead and 1 behind. */}
-        <World generator={generator} />
+        {/* The Gate, then the endless castle: about 3 segments ahead and 1 behind, with any hidden figures. */}
+        <group name={WORLD_GROUP_NAME}>
+          <World generator={generator} />
+        </group>
         <IntroCameraRig />
         {/* Takes the camera over from the intro rig once it arrives. */}
         <Player path={generator.path} />
@@ -80,6 +84,8 @@ export default function CastleCanvas() {
         <InvertDirector generator={generator} />
         {/* The biwa: the rooms ahead shift when you stand still, or at random. */}
         <ShiftDirector generator={generator} />
+        {/* Finds a hidden figure that is looked at long enough. */}
+        <FigureWatcher />
         <PostEffects />
         {import.meta.env.DEV && <RenderStats />}
       </Canvas>

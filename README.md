@@ -62,7 +62,11 @@ npm run lint     # oxlint
 | Castle (dev only) | **Dev → Special → inverted chamber** / **central abyss** | Rebuild the rooms ahead so the next one is that chamber, and teleport to 1.2 m before its door |
 | Castle (dev only) | **Dev → Special → biwa (room shift)** | Shift the rooms where you stand. **biwa events** counts biwa events and shows why the last one came; **camera roll** shows the Inverted Chamber's roll. |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
-| Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
+| Hidden figures | Look at one: keep it near the middle of the view, within 60 m, for 1 s | Found: its circle fills, the **FOUND** card shows its number and name, it says its first line, and progress is saved |
+| Hidden figures | Click one (a press without dragging) | Finds it. If it is found already, its card shows again and it says its next line. Nothing behind a wall counts. |
+| After the sixth figure | (none) | The finale plays by itself: walking and looking are locked, every light turns red, a last line appears, and the screen fades back to the title |
+| Castle (dev only) | **Dev → Guide → open** | Opens the guide |
+| Castle (dev only) | **Dev → Figures** | **found** and **mounted** (each mounted figure's distance and gaze time) monitor them. **always appear** puts every figure in every room of its area. **go to next hidden** ticks it, builds the first unfound figure's area as the next room and puts you at its door. **find next** finds the next figure at once (card, line, save; the sixth starts the finale). **reset figures** clears them and the saved progress. |
 | Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
 | Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
 | Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind, including The Forking Hall, The Crossroads, The Stairwell, The Inverted Chamber and The Central Abyss (the 3 already built ahead come first: skip 4 times to reach it). While a kind is forced, the junction schedule is off. |
@@ -266,7 +270,7 @@ A hanging paper scroll that explains the castle, in `src/ui/GuideScroll.tsx`. It
 1. The first scroll doesn't move you (**Dev → Player → progress** stays at 0). Instead, the two rollers appear together in the middle and unroll the paper over about a second, while the castle behind dims and blurs.
 2. Scrolling, holding **W** or dragging while the scroll is open does nothing.
 3. The four tabs switch content, by click or with ← → once a tab has focus. **The Castle** has the red drop cap and *There is no exit.* at the end.
-4. In **Dev → Guide**, click **find a figure** twice: on **Hidden Ones**, slots 1 and 2 turn into vermilion rings, and the count reads **2 of 6 found**.
+4. In **Dev → Figures**, click **find next** twice: on **Hidden Ones**, slots 1 and 2 turn into vermilion rings, and the count reads **2 of 6 found**.
 5. **Esc** rolls the scroll back up into the middle and the castle comes back into focus. Scrolling now walks.
 6. The **案内 GUIDE** button (bottom right) opens it again. **Accept the summons** closes it, and focus returns to the button.
 7. In DevTools device mode at 375 × 667 and 667 × 375: the scroll fits with no sideways scrolling, and the panel scrolls inside the paper.
@@ -419,6 +423,7 @@ The in-game overlay, in `src/ui/HUD.tsx` (styles in `src/ui/HUD.css`). It is a f
 - **Bottom right**:
   - **案内 GUIDE** (`hud/GuideToggle.tsx`) opens the guide scroll. It replaces the old top-left GUIDE button and shows from the start, not only after the guide has opened once. Focus comes back to it when the scroll closes.
   - The sound toggle (`hud/SoundToggle.tsx`, `hud/Equalizer.tsx`) flips `soundEnabled` in `useGameStore`. While sound is on, five bars bounce at different speeds (CSS `transform` only) and the label reads **SOUND ON**. While it is off, the bars lie flat and the label reads **SOUND OFF**. For screen readers, the button is named "Sound" and uses `aria-pressed`. Nothing makes sound yet: audio comes in step 16.
+- **Center** (`hud/FoundCard.tsx`): the **FOUND** card when a hidden figure is found or clicked again (see *The hidden figures*).
 - **Lower center** (`hud/SubtitleLine.tsx`): subtitles. Any code can call `useSubtitleStore.getState().showSubtitle(en, ja, duration)`. The English line shows in italics, with a smaller, dimmer Japanese line under it (pass `''` to leave it out). The line fades in over 0.6 s and stays up for `duration` seconds (default 4). Then it fades out. A new line crossfades over the old one. `clearSubtitle()` removes it early. Screen readers hear each line through a `role="status"` region.
 - **Crossfades** (`src/ui/Crossfade.tsx`, `CrossfadeLayer.tsx`): a small reusable component. Give it a `contentKey`, and whenever the key changes it stacks the new content over the old one in the same grid cell. GSAP fades the old layer out and the new one in, then the old layer is removed. A layer that is leaving is `aria-hidden`.
 - **Readability:** all text is the UI off-white, with a soft void-colored text shadow (hairlines, circles and bars get a matching `box-shadow`). Numbers use lining figures, because Cormorant's default old-style figures made "001" look like "ooı".
@@ -430,7 +435,7 @@ The in-game overlay, in `src/ui/HUD.tsx` (styles in `src/ui/HUD.css`). It is a f
 1. The four corners fade in. Top left reads **HIDDEN ONES 0 / 6** with six empty circles (6 to 1), bottom left reads **THE GATE 城門** and **N° 000**, and bottom right reads **SOUND OFF** with flat bars.
 2. Clicking the sound toggle switches it to **SOUND ON** and the bars start bouncing. Click again to turn it off.
 3. Walk (or use **Dev → World → skip to next segment**) into the next room: the area plate crossfades to the new name and **N° 001** over about a second.
-4. **Dev → Guide → find a figure** twice: circles 1 and 2 fill vermilion and the count reads **2 / 6**.
+4. **Dev → Figures → find next** twice: circles 1 and 2 fill vermilion and the count reads **2 / 6** (then **reset figures**).
 5. **Dev → HUD → show subtitle**: a line and its Japanese fade in at the lower center and go away after a few seconds. Click it twice quickly: the second line crossfades over the first.
 6. Drag or scroll over the area name or the subtitle: you look and walk as usual. Only the two buttons react to the pointer.
 7. **案内 GUIDE** opens the guide. The HUD dims behind it, and closing the guide gives focus back to the button.
@@ -610,6 +615,54 @@ Both are picked at random like any room (weights 0.35 and 0.3, `segments/registr
 5. Stop at a fork (the buttons showing) and wait: nothing shifts. Press **biwa** there: the hall lurches and shakes, but nothing ahead changes (nothing is built past an unchosen fork).
 6. Walk back after a shift: the rooms behind you are as they were.
 
+### The hidden figures
+
+Six figures hide in the castle, one per area type. Find all six and the castle ends.
+
+**The data** (`world/figures.ts`): each figure has an `id` (used to save progress), a `number` (1 to 6: its HUD circle and guide slot), a `name`, a `kanji` name, the `area` it can appear in, a placeholder `pose`, and three `lines` in English and Japanese. The names and lines are **TODO placeholders** (*TODO Name One*, *TODO: figure 1, line 1* / *（未定 1-1）*), to be replaced with original characters, and so is `FINALE_LINE`. The module checks that no two figures share an area and that the numbers run 1 to 6.
+
+| No. | Area | Where it stands | Pose |
+| --- | ---- | --------------- | ---- |
+| 1 | The Threshold | On a broken piece of another deck floating 9–13 m off to one side, a little below, near the far end | standing, hooded |
+| 2 | The Suspended Walkway | On a stretch of another walkway 10–15 m out in the void, crossing at an angle, below the walk | conical hat (kasa) |
+| 3 | The Open Gallery | On a far balcony 11–14 m out from the open side, in front of a short wall of lit shoji under a roof | parasol |
+| 4 | The Forking Hall | Up in a far corner, standing on the ceiling, head down (the other side from a hanging flight) | bowed, hair over the face |
+| 5 | The Stairwell | On a platform floating 8–10 m beside the tower, ahead of where the walk stops | arm raised |
+| 6 | The Central Abyss | On the waist balcony of a tower across the void, ahead of the middle of the bridge | ringed staff |
+
+**The figure** (`scene/figures/`): a flat, near-black silhouette on a 1 × 2 m plane that turns about its vertical axis to face you, with a soft vermilion glow just behind it, and two narrow eye slits glowing a faint paper-white in the dark of the head (under the kasa's brim, deep in the hoods, through the bowed one's hair). The silhouettes and eyes are drawn on canvas in `silhouettes.ts` (robed figures in six poses, drawn in meters with SVG path data, colors from the palette). The eyes are a layer of their own just in front of the silhouette, additive and only just bright enough to bloom (`EYES_INTENSITY`), fading with the same haze as the glow but not breathing. Silhouette and glow are unlit and unfogged; the glow fades with a haze a third as thick as the fog, so a figure 50 m away still shows, and breathes slowly. Three draw calls per figure.
+
+**Spawning** (`world/spawns/`):
+- `spots.ts` works out each area's hiding place from the room's params, in the room's frame. Each spot can be centered in the view from a good stretch of the walk (the look reaches 60° either side), and perches stand at or below eye level, because from under a perch its floor hides the figure. Perches keep 9 m clear of floating pavilions; the Stairwell's keeps clear of the room after the flights.
+- A room holds its figure with a chance per area (`tuning.ts`: 0.5 to 0.7, and always in the Abyss, which is rare already), decided from the room's seed, so a room is the same every time. Never in the fixed opening.
+- `FigureSpawn` mounts inside `SegmentView`, so a figure and its perch move with their room in a room shift.
+- A figure is only ever in one place (`claims.ts`): if two rooms of the same area are mounted, the first holds it and the other shows an empty perch. When the first unmounts, the other takes it.
+- `perchLayout.ts` / `FigurePerch.tsx`: a deck is planks on edge beams with struts dangling into the void, boards sticking out of one broken end, railings with gaps (walkway and stairwell), and a standing lantern at the far end from the figure. A balcony is a floor and railing in front of three shoji panels (two or three lit), a door head, boards and a roof. 1 to 5 draw calls.
+
+**Finding one** (`FigureWatcher.tsx`, `state/hiddenFigures.ts`):
+- **By looking:** a figure within 60 m and 9° of the center of the view for 1 s is found. Looking away restarts the count. Before it counts, a ray from the eye checks the castle's solid meshes (`occlusion.ts`, only the mounted segments): the figure is hidden only if both its middle and its head are blocked, so a thin rail doesn't hide it. If it is hidden, the check runs again every 0.25 s.
+- **By clicking** (the glow is the click target, so a far figure is still easy to hit): a press that moved less than 6 px finds it. The same wall check applies. The cursor turns to a pointer over a figure.
+- **Found:** `useFigureStore` marks it and saves the found ids in `localStorage` (`endless-castle/found`). Its HUD circle fills, the **FOUND** card appears, and it says line 1 through `showSubtitle` (5 s).
+- **Clicking a found figure** shows its card again and says its next line (2, 3, then 1 again).
+- Nothing counts during the intro, the Fall or the finale, or with the guide open.
+
+**The FOUND card** (`ui/hud/FoundCard.tsx`, styles in `HUD.css`): centered a little above the middle. **— FOUND —** between hairlines, the number in a filled vermilion circle (like its HUD circle), the name in large letter-spaced capitals, and the kanji name under it. It crossfades in over 0.8 s, stays 4.5 s and fades out. A new card crossfades over an old one. It never takes the pointer, and screen readers hear it through a `role="status"` region.
+
+**The finale** (placeholder; `ui/FinaleOverlay.tsx`, `state/finaleFx.ts`, `scene/finale/RedShiftEffect.ts`): when the sixth figure is found, input locks (walking, looking, fork choices, the biwa), and saved progress is cleared, so the next visit starts with all six hidden again. After the sixth card has had its 4.5 s, every light turns red over 3.5 s. GSAP tweens `finaleFx.red`, and three things follow it: the light pool's point lights and the hemisphere fill turn from lantern amber to vermilion, and a red grade in post-processing (before tone mapping) keeps each pixel's brightness but gives it the vermilion hue, so lanterns, shoji and windows burn red while the void stays black. Then the final line appears for 5 s, the screen fades to black over 2.2 s, and the title screen comes back. Entering again resets every store (`state/session.ts`) and plays the intro from the start.
+
+**Performance:** at most one figure per area is mounted at a time (usually one, now and then two). The gaze test is a few multiplies per mounted figure per frame, with no allocations. The ray test runs only when a figure has been held in view for 1 s.
+
+**How to test:** run `npm run dev`, open `/?seed=42`, click **Enter in silence**, and skip past the Fall (**Dev → World → skip to next segment** four times, then let it land). Then check that:
+
+1. **Dev → Figures → go to next hidden**: you stand at the door of a Threshold. Off to one side, a little ahead and below, a broken deck floats with a lantern on it and a dark robed figure in front of a red glow. Walk in a step, drag the view onto it and hold still: after about a second, circle 1 fills, **FOUND / 1 / TODO NAME ONE / 未定一** appears in the middle, and *TODO: figure 1, line 1* shows at the bottom.
+2. Click the figure: the card shows again, now with *line 2*. Click again for *line 3*.
+3. Reload the page and enter again: **HIDDEN ONES 1 / 6**, circle 1 still filled.
+4. **go to next hidden** again for each of the others: a walkway out in the void (2), a balcony with lit shoji off the gallery's open side (3), a far corner of the Forking Hall's ceiling, head down (4; walk in to where the buttons appear and look up and to the side), a platform beside the Stairwell (5; from where the walk stops), and a tower balcony across the Abyss (6; walk onto the bridge). Find some by looking and some by clicking.
+5. Before finding one, look at it through a wall or from behind a solid piece of the castle: it isn't found.
+6. With the sixth: after its card, every lantern, paper wall and window turns red, *TODO: the final line* appears, the screen fades to black and the title screen returns. Scrolling and **W** do nothing during it. Enter again: the intro plays, **HIDDEN ONES 0 / 6**.
+7. **find next** six times also plays the finale, without walking anywhere.
+8. Turn **always appear** off and walk: figures turn up in only some rooms of their area, and the same room always has or hasn't one.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -630,7 +683,7 @@ Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and 
 index.html              Google Fonts, root element
 src/
   main.tsx              Entry point; applies the palette to CSS variables
-  App.tsx               Shows the title screen, then the 3D canvas, intro overlay, HUD and guide (+ dev panel in dev); ?kit opens the kit view
+  App.tsx               Shows the title screen, then the 3D canvas, intro overlay, HUD, guide and finale (+ dev panel in dev); entering resets the session; ?kit opens the kit view
   index.css             Global styles, font variables, .kanji and .label classes
   lib/
     palette.ts          The only source of colors (also exposed as --color-* CSS variables)
@@ -638,9 +691,12 @@ src/
     random.ts           Seeded PRNG (mulberry32), seed hashing, and range / pick / weighted-pick helpers
     math.ts             clamp, smoothstep, damp, smoothDamp (critically damped spring)
   state/
-    useGameStore.ts     zustand store (soundEnabled, introComplete, guideOpen, guideSeen)
+    useGameStore.ts     zustand store (entered, soundEnabled, introComplete, guideOpen, guideSeen, finale)
     useSubtitleStore.ts The HUD's subtitle line: showSubtitle(en, ja, duration), clearSubtitle()
-    useFigureStore.ts   Which of the six hidden figures have been found
+    useFigureStore.ts   Which of the six hidden figures have been found (saved in localStorage), the FOUND card, lines said
+    hiddenFigures.ts    discoverFigure / revisitFigure / clickFigure: save, card, line, and the finale on the sixth
+    finaleFx.ts         The finale's red (0 … 1), tweened by FinaleOverlay, read by the lights and the red grade
+    session.ts          resetSession(): every store back to its first state, for entering again after the finale
     usePlayerStore.ts   Progress along the walk: target, smoothed progress, speed, walkable bounds, walkBy(), jumpTo()
     useWorldStore.ts    Where you are: area, kanji, room number (and furthest), seed, dev's forced kind
     footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
@@ -657,12 +713,14 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide / figure buttons, HUD subtitle / sound buttons, Special (inverted chamber, central abyss, biwa, roll) (dev builds only)
+    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide, Figures (found, mounted, always appear, go to next hidden, find next, reset), HUD subtitle / sound buttons, Special (inverted chamber, central abyss, biwa, roll) (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
     GuideScroll.css     Parchment, rollers, brass caps, stamps, tab content
-    HUD.tsx             The in-game overlay: header, area plate, subtitles, guide and sound buttons
+    HUD.tsx             The in-game overlay: header, area plate, subtitles, FOUND card, guide and sound buttons
+    FinaleOverlay.tsx   The placeholder finale's script (GSAP): lights to red, last line, fade to black, back to the title
+    FinaleOverlay.css
     HUD.css             All HUD styles (em-based, one small-screen rule scales everything)
     Crossfade.tsx       Crossfades its children whenever contentKey changes
     CrossfadeLayer.tsx  One layer of a crossfade (GSAP fade in / out)
@@ -674,6 +732,7 @@ src/
       SoundToggle.tsx   Bottom right: SOUND ON / OFF
       Equalizer.tsx     The five bars on the sound toggle
       SubtitleLine.tsx  Lower center: English and Japanese subtitle lines
+      FoundCard.tsx     Center: FOUND, the figure's number in a vermilion circle, its name and kanji (crossfades)
       ForkChoice.tsx    Bottom center at a fork: ← ● → or ↑ ↓ round buttons with their keys
     guide/
       content.ts        Every word in the guide: tabs, lore, areas, key bindings, omens
@@ -690,7 +749,17 @@ src/
     Atmosphere.tsx      Void background and FogExp2
     Starfield.tsx       Twinkling star sphere (shader points)
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
-    PostEffects.tsx     Bloom, tone mapping, vignette (closes in during the Fall), grain
+    PostEffects.tsx     Bloom, the finale's red grade, tone mapping, vignette (closes in during the Fall), grain
+    figures/            The hidden figures (drawing and finding)
+      HiddenFigure.tsx  One figure: silhouette and glow facing the camera, glow haze and breath, click to find
+      FigureWatcher.tsx Finds a figure held near the middle of the view for 1 s (with the wall check)
+      silhouettes.ts    Canvas silhouettes: six robed poses, their eye slits; the glow texture
+      figureMaterials.ts  Shared silhouette materials, the glow's brightness
+      liveFigures.ts    The figures mounted now, for the watcher (and the dev panel)
+      occlusion.ts      Is a figure hidden behind the castle? Rays to its middle and head against the mounted segments
+      tuning.ts         Sizes, glow, how close and how centered and how long, click slop
+    finale/
+      RedShiftEffect.ts The finale's post-processing grade: every light vermilion
     IntroCameraRig.tsx  GSAP dolly from far back to the start of the bridge
     Player.tsx          First-person walker: smoothing, camera on the path, head-bob (per riser on stairs), look, footsteps (stands down during the Fall, follows scripted walks at forks), roll and shake
     invert/
@@ -714,7 +783,7 @@ src/
       walkPath.ts       WalkPath: what the player walks along (a point for any distance)
     lighting/
       lightSources.ts   Registry of warm light sources (position, intensity, reach, flicker)
-      LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades
+      LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades; amber to vermilion in the finale
       PooledLight.tsx   Registers one source at its world position (instead of <pointLight>); follows its segment in a room shift
     RenderStats.tsx     Dev: draw calls, triangles and shader programs per frame
     frameStats.ts       Where RenderStats (and the distant castle) leave their numbers for the dev panel
@@ -759,14 +828,22 @@ src/
       RoofInstances.tsx Identical roofs in three draw calls (any pitch, e.g. upside down)
   world/                Level generation
     segment.ts          Segment, SegmentDefinition, SegmentPlan, ForkSpec and BranchPlan types; placeSegment, straightPlan, toWorld, turnPoint
+    figures.ts          The six hidden figures: id, number, name, kanji, area, pose, three lines (names and lines are TODO placeholders); the finale's line
     WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, stops at forks (resolveFork), Crossroads previews, the junction schedule, forgets old ones; rebuildAhead (room shifts), segmentAt, holdEnd
     WorldPath.ts        Every segment's path joined into one walk, by distance; sealBefore() closes it behind the Fall
     World.tsx           Mounts the window of segments (and Crossroads previews, and rooms leaving in a shift); updates walkable bounds (held during a shift) and the world store
-    SegmentView.tsx     One segment's component in a group at its start transform, inside wrappers that play a room shift's move
+    SegmentView.tsx     One segment's component (and any hidden figure) in a group at its start transform, inside wrappers that play a room shift's move
+    spawns/             Where the hidden figures stand
+      spots.ts          Each area's hiding place from the room's params; the spawn roll
+      tuning.ts         Spawn chance per area, and the dev override
+      claims.ts         One figure in one place: a queue per figure of the rooms that could hold it
+      FigureSpawn.tsx   A segment's figure and perch, mounted by SegmentView
+      perchLayout.ts    A floating deck or balcony, piece by piece
+      FigurePerch.tsx   Draws it (merged boxes, shoji, roof, lantern)
     shift/
       segmentMotion.ts  A segment's move in a room shift (types), and the context lights read to follow it
       shiftMotions.ts   How rooms leave (slide, hinge, drop), arrive (slide, hinge, rise, descend) and lurch
-    Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill
+    Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill (vermilion in the finale)
     backdropLayout.ts   Where the pagodas stand, and the space around them to keep clear
     distant/            The distant castle (what goes where)
       towerDesign.ts    Cell grid, one tower or room per cell from hash(seed, cell), its parts
@@ -786,7 +863,7 @@ src/
       fall/             The Fall: layout.ts (dimensions, plan), timing.ts (the script's times), deckLayout.ts,
                         CollapsingDeck.tsx, shaftLayout.ts (placer + pillars, rooms, stairs, towers), FallShaft.tsx,
                         HangingPillars.tsx, InvertedRooms.tsx, FloatingStairs.tsx, LitTowers.tsx, TheFall.tsx, definition.ts
-      walkway/          The Suspended Walkway: layout.ts (curve, planks, rails, posts), SuspendedWalkway.tsx, definition.ts
+      walkway/          The Suspended Walkway: layout.ts (curve, planks, rails, posts, a point beside the walk), SuspendedWalkway.tsx, definition.ts
       corridor/         The Shoji Corridor: layout.ts (and the false exit), ShojiCorridor.tsx, definition.ts
       gallery/          The Open Gallery: layout.ts, OpenGallery.tsx, definition.ts
       tatami/           The Tatami Room: layout.ts (runs, scroll and lantern changes), TatamiRoom.tsx, SlidingDoorPair.tsx, definition.ts
@@ -796,7 +873,7 @@ src/
       stairwell/        The Stairwell: layout.ts (deck, flights, landings, tower, the walk up or down), Stairwell.tsx, definition.ts
       branch/           The walk out of a fork: definition.ts, BranchWalk.tsx (draws nothing)
       inverted/         The Inverted Chamber: layout.ts (two-tier walls, furniture on the ceiling, roll points), InvertedChamber.tsx, definition.ts
-      abyss/            The Central Abyss: layout.ts (sagging bridge, tower ring, distant lights, embers), CentralAbyss.tsx,
+      abyss/            The Central Abyss: layout.ts (sagging bridge, tower ring and its balconies (cached), distant lights, embers), CentralAbyss.tsx,
                         AbyssTowers.tsx (unlit hazed towers, 4 draw calls), AbyssGlow.tsx (shader points), definition.ts
       Gate.tsx          The opening segment: bridge, landing, gate, back glow
       gate/
@@ -830,7 +907,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 11. The distant castle
 - [x] 12. Junctions and stairs
 - [x] 13. Special chambers
-- [ ] 14. The hidden figures
+- [x] 14. The hidden figures
 - [ ] 15. Signs and presence
 - [ ] 16. Audio
 - [ ] 17. Mobile, performance and polish

@@ -130,6 +130,17 @@ function beside(f: Frame, side: number, offset: number, lift: number): Vec3 {
   return [f.point.x + f.rightX * side * offset, f.point.y + lift, f.point.z + f.rightZ * side * offset]
 }
 
+/**
+ * A point `offset` meters to one side of the walk (`side` -1 left, 1 right), `share` of the way
+ * along it and `lift` above it, with the walk's heading there. For placing things off the walk.
+ */
+export function besideWalkway(p: PathParams, share: number, side: number, offset: number, lift: number) {
+  const curve = walkwayCurve(p)
+  const length = curve.getLength()
+  const f = frameAt(curve, length, length * share)
+  return { position: beside(f, side, offset, lift), yaw: f.yaw }
+}
+
 export function generateWalkway(rand: Random, context: SegmentContext): WalkwayParams {
   const path: PathParams = {
     length: randRange(rand, 16, 28),

@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
-import { Leva, button, monitor, useControls } from 'leva'
+import { Leva, button, levaStore, monitor, useControls } from 'leva'
+import { getLiveFigures } from '../scene/figures/liveFigures'
 import { distantCastleStats, frameStats } from '../scene/frameStats'
 import { emitBiwa, onBiwa } from '../state/biwa'
 import { cameraFx } from '../state/cameraFx'
 import { onFootstep } from '../state/footsteps'
+import { discoverFigure } from '../state/hiddenFigures'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
 import { useFigureStore } from '../state/useFigureStore'
 import { useGameStore } from '../state/useGameStore'
@@ -11,7 +13,9 @@ import { usePlayerStore } from '../state/usePlayerStore'
 import { useShiftStore } from '../state/useShiftStore'
 import { useSubtitleStore } from '../state/useSubtitleStore'
 import { useWorldStore } from '../state/useWorldStore'
+import { FIGURES } from '../world/figures'
 import { RANDOM_SEGMENT_KINDS, SEGMENT_DEFINITIONS, type RandomSegmentKind } from '../world/segments/registry'
+import { spawnOverride } from '../world/spawns/tuning'
 
 const readProgress = () => usePlayerStore.getState().progress
 const readSpeed = () => usePlayerStore.getState().speed
@@ -47,6 +51,19 @@ const SAMPLE_SUBTITLES: [en: string, ja: string, duration: number][] = [
   ['There is no exit.', '出口はない。', 2.5],
 ]
 let subtitleIndex = 0
+
+const readFound = () => {
+  const found = useFigureStore.getState().found
+  const n = found.filter(Boolean).length
+  return `${n} / ${found.length}${n ? ` (${found.flatMap((f, i) => (f ? [i + 1] : [])).join(' ')})` : ''}`
+}
+const readLiveFigures = () => {
+  const live = getLiveFigures()
+  if (live.length === 0) return 'none mounted'
+  return live.map((f) => `No. ${f.index + 1}: ${f.distance.toFixed(1)} m, ${f.dwell.toFixed(1)} s`).join(' | ')
+}
+/** The first figure not found yet, or the first one if all are. */
+const nextHidden = () => Math.max(0, useFigureStore.getState().found.indexOf(false))
 
 const KIND_OPTIONS: Record<string, RandomSegmentKind | 'random'> = {
   random: 'random',
@@ -152,13 +169,30 @@ export default function DevPanel() {
     'camera roll': monitor(readRoll, { interval: 100 }),
   })
 
-  // Until the figures exist in the world: mark them found by hand to test the guide's slots.
   useControls('Guide', {
     open: button(() => useGameStore.getState().openGuide()),
-    'find a figure': button(() => {
-      const { found, markFound } = useFigureStore.getState()
-      const next = found.indexOf(false)
-      if (next >= 0) markFound(next)
+  })
+
+  // The hidden figures. "go to next hidden" rebuilds the rooms ahead so the next one is the first
+  // unfound figure's area (with its figure in it) and puts you at its door. "find next" finds it
+  // at once (card, line, save), and the sixth starts the finale.
+  useControls('Figures', {
+    found: monitor(readFound, { interval: 200 }),
+    mounted: monitor(readLiveFigures, { interval: 100 }),
+    'always appear': {
+      value: spawnOverride.always,
+      onChange: (v: boolean) => {
+        spawnOverride.always = v
+      },
+    },
+    'go to next hidden': button(() => {
+      // Ticks the box too (its onChange sets the override).
+      levaStore.setValueAtPath('Figures.always appear', true, false)
+      useShiftStore.getState().requestRoom(FIGURES[nextHidden()].area)
+    }),
+    'find next': button(() => {
+      const next = useFigureStore.getState().found.indexOf(false)
+      if (next >= 0) discoverFigure(next)
     }),
     'reset figures': button(() => useFigureStore.getState().resetFound()),
   })

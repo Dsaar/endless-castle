@@ -53,6 +53,7 @@ function quiet() {
   return (
     game.introComplete &&
     !game.guideOpen &&
+    !game.finale &&
     useFallStore.getState().phase === 'done' &&
     !scriptedWalk.active &&
     !forks.taking &&

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Group } from 'three'
 import { runSegmentMotion } from '../scene/shift/runSegmentMotion'
 import type { Segment } from './segment'
+import FigureSpawn from './spawns/FigureSpawn'
 import { SegmentMotionContext, type SegmentMotion, type SegmentMotionState } from './shift/segmentMotion'
 
 interface SegmentViewProps<P> {
@@ -12,7 +13,8 @@ interface SegmentViewProps<P> {
 
 /**
  * Mounts one segment's component in its local frame (its start transform), inside two
- * wrapper groups that stay at rest except while a room shift moves the segment.
+ * wrapper groups that stay at rest except while a room shift moves the segment. Any hidden
+ * figure the segment holds (and its perch) mounts in the same frame, so it moves with the room.
  */
 export default function SegmentView<P>({ segment, motion }: SegmentViewProps<P>) {
   const { Component, start } = segment
@@ -42,6 +44,7 @@ export default function SegmentView<P>({ segment, motion }: SegmentViewProps<P>)
         <group ref={inner}>
           <group position={[start.x, start.y, start.z]} rotation={[0, start.yaw, 0]}>
             <Component segment={segment} />
+            <FigureSpawn segment={segment as Segment} />
           </group>
         </group>
       </group>

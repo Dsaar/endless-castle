@@ -1,5 +1,8 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense } from 'react'
 import CastleCanvas from './scene/CastleCanvas'
+import { resetSession } from './state/session'
+import { useGameStore } from './state/useGameStore'
+import FinaleOverlay from './ui/FinaleOverlay'
 import GuideScroll from './ui/GuideScroll'
 import HUD from './ui/HUD'
 import IntroOverlay from './ui/IntroOverlay'
@@ -17,8 +20,14 @@ const KitView =
     ? lazy(() => import('./scene/KitView'))
     : null
 
+/** Every visit starts from a clean slate: the castle is not mounted yet, so nothing sees the reset. */
+function enterCastle() {
+  resetSession()
+  useGameStore.getState().enter()
+}
+
 export default function App() {
-  const [entered, setEntered] = useState(false)
+  const entered = useGameStore((s) => s.entered)
 
   if (KitView) {
     return (
@@ -29,7 +38,8 @@ export default function App() {
     )
   }
 
-  if (!entered) return <TitleScreen author={AUTHOR} onEnter={() => setEntered(true)} />
+  // The finale comes back here: the castle unmounts and the title screen fades in again.
+  if (!entered) return <TitleScreen author={AUTHOR} onEnter={enterCastle} />
 
   return (
     <>
@@ -37,6 +47,7 @@ export default function App() {
       <IntroOverlay />
       <HUD />
       <GuideScroll />
+      <FinaleOverlay />
       {DevPanel && (
         <Suspense fallback={null}>
           <DevPanel />

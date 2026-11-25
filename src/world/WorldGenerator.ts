@@ -39,6 +39,8 @@ const SHIFT_SALT = 0x3c6ef372
 const OPENING: readonly SegmentKind[] = ['gate', 'threshold', 'fall', 'walkway']
 /** The Fall's id. */
 export const FALL_SEGMENT_ID = OPENING.indexOf('fall')
+/** Segments with ids below this are the fixed opening. */
+export const OPENING_LENGTH = OPENING.length
 
 /** Every kind's definition, scripted ones included. */
 function definitionOf(kind: SegmentKind): SegmentDefinition<unknown> {

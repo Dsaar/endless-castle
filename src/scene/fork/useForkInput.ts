@@ -43,7 +43,7 @@ export function useForkInput() {
     })
     const ready = () => {
       const game = useGameStore.getState()
-      return game.introComplete && !game.guideOpen
+      return game.introComplete && !game.guideOpen && !game.finale
     }
 
     const onKeyDown = (e: KeyboardEvent) => {

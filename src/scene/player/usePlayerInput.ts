@@ -54,12 +54,18 @@ export function isTyping(target: EventTarget | null) {
 
 /**
  * Can the player act? Not until the intro camera has arrived, not while the guide is open,
- * not during THE FALL (nothing may slow it or steer it), and not while a fork carries them
- * into the way they chose.
+ * not during THE FALL (nothing may slow it or steer it), not while a fork carries them
+ * into the way they chose, and not once the finale has begun.
  */
 function canMove() {
   const game = useGameStore.getState()
-  return game.introComplete && !game.guideOpen && useFallStore.getState().phase !== 'falling' && !scriptedWalk.active
+  return (
+    game.introComplete &&
+    !game.guideOpen &&
+    !game.finale &&
+    useFallStore.getState().phase !== 'falling' &&
+    !scriptedWalk.active
+  )
 }
 
 /**
@@ -261,7 +267,7 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
       onHoverLeave()
     }
 
-    // When the guide opens or the Fall begins, let go of everything: keys, drags, swipes and the look-around.
+    // When the guide opens, the Fall or the finale begins, let go of everything: keys, drags, swipes and the look-around.
     const dropAll = () => {
       onBlur()
       touches.clear()
@@ -272,7 +278,7 @@ export function usePlayerInput(element: HTMLElement): RefObject<PlayerInput> {
       state.pitchDelta = 0
     }
     const unsubscribeGuide = useGameStore.subscribe((s, prev) => {
-      if (s.guideOpen && !prev.guideOpen) dropAll()
+      if ((s.guideOpen && !prev.guideOpen) || (s.finale && !prev.finale)) dropAll()
     })
     const unsubscribeFall = useFallStore.subscribe((s, prev) => {
       if (s.phase === 'falling' && prev.phase !== 'falling') dropAll()

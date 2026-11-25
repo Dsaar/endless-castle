@@ -215,19 +215,39 @@ export interface TowerLayout {
   windows: TowerPiece[]
   /** Unit lantern bodies. */
   lanterns: TowerPiece[]
+  /** The balcony slab at each tower's waist. */
+  balconies: TowerBalcony[]
 }
+
+/** The walkable ring of slab round a tower's waist, outside its walls. */
+export interface TowerBalcony {
+  /** The tower's axis at the top of the slab, in the segment's frame. */
+  position: Vec3
+  yaw: number
+  /** Half the width of the tower's walls; the slab reaches BALCONY_REACH further. */
+  halfWidth: number
+}
+
+/** How far the waist slab reaches out past a tower's walls. */
+export const BALCONY_REACH = 1.5
+const BALCONY_SLAB = 0.5
+
+const towerLayouts = new WeakMap<AbyssParams, TowerLayout>()
 
 /**
  * Towers all round the void except near the ways in and out: stacks of stories rising far
  * above the bridge and sinking far below it, the lower half upside down (roof under each story),
  * meeting at a balcony near the bridge's height. Lit windows on every face, lanterns hanging at
- * the roof corners.
+ * the roof corners. Built once per params and cached (the towers and the figure placed on a
+ * balcony both read it).
  */
 export function buildTowerLayout(p: AbyssParams): TowerLayout {
+  const cached = towerLayouts.get(p)
+  if (cached) return cached
   const rand = createRandom(p.seed ^ 0x2545f491)
   const R = ringRadius(p)
   const [cx, , cz] = abyssCenter(p)
-  const out: TowerLayout = { boxes: [], roofs: [], windows: [], lanterns: [] }
+  const out: TowerLayout = { boxes: [], roofs: [], windows: [], lanterns: [], balconies: [] }
 
   // Two arcs, one either side of the bridge (angle 0 is +X, -90° the way in, 90° the way out).
   const arc = Math.PI - GAP * 2
@@ -240,6 +260,7 @@ export function buildTowerLayout(p: AbyssParams): TowerLayout {
       addTower(out, rand, [cx + Math.cos(angle) * r, 0, cz - Math.sin(angle) * r])
     }
   })
+  towerLayouts.set(p, out)
   return out
 }
 
@@ -256,7 +277,8 @@ function addTower(out: TowerLayout, rand: Random, base: Vec3) {
   const at = (x: number, y: number, z: number): Vec3 => [base[0] + x * c + z * s, y, base[2] - x * s + z * c]
   const roofScale = w / 2 / ROOF_SHAPE.halfWall
 
-  out.boxes.push({ position: at(0, waist, 0), yaw, scale: [w + 3, 0.5, w + 3] })
+  out.boxes.push({ position: at(0, waist, 0), yaw, scale: [w + BALCONY_REACH * 2, BALCONY_SLAB, w + BALCONY_REACH * 2] })
+  out.balconies.push({ position: at(0, waist + BALCONY_SLAB / 2, 0), yaw, halfWidth: w / 2 })
 
   const story = (bottom: number, flipped: boolean, k: number) => {
     // Every few stories a little narrower, so the silhouette isn't one long box.
