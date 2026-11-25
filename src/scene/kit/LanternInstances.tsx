@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { InstancedBufferAttribute, Vector3, type Group } from 'three'
+import { Euler, InstancedBufferAttribute, Vector3, type Group } from 'three'
 import { addLightSources, type LightSource } from '../lighting/lightSources'
 import { lanternFlicker, paperGlow } from './flicker'
 import KitInstances from './KitInstances'
@@ -13,6 +13,8 @@ export interface LanternPlacement {
   /** Hanging: center of the body. Standing: center of the base. */
   position: Vec3
   yaw?: number
+  /** Tilt about its own X after the yaw: `Math.PI` stands a lantern upside down (under a hanging landing). */
+  pitch?: number
   /** Flicker phase, so neighbours pulse out of step. */
   phase: number
 }
@@ -29,6 +31,8 @@ interface LanternInstancesProps {
 }
 
 const scratch = new Vector3()
+const offset = new Vector3()
+const turn = new Euler(0, 0, 0, 'YXZ')
 
 /**
  * A row of identical lanterns in three draw calls (frames, paper, cords). Each lantern
@@ -48,7 +52,7 @@ export default function LanternInstances({ kind, lanterns, size = 1, cord = 0.8,
   }, [shape, count])
 
   const items = useMemo<InstanceTransform[]>(
-    () => lanterns.map((l) => ({ position: l.position, yaw: l.yaw, scale: [size, size, size] })),
+    () => lanterns.map((l) => ({ position: l.position, yaw: l.yaw, pitch: l.pitch, scale: [size, size, size] })),
     [lanterns, size],
   )
   const cords = useMemo<InstanceTransform[]>(
@@ -63,8 +67,9 @@ export default function LanternInstances({ kind, lanterns, size = 1, cord = 0.8,
     const group = groupRef.current
     if (!group) return
     group.updateWorldMatrix(true, false)
-    const sources: LightSource[] = lanterns.map(({ position: [x, y, z], phase }) => {
-      scratch.set(x, y + shape.lightY * size, z).applyMatrix4(group.matrixWorld)
+    const sources: LightSource[] = lanterns.map(({ position: [x, y, z], yaw = 0, pitch = 0, phase }) => {
+      offset.set(0, shape.lightY * size, 0).applyEuler(turn.set(pitch, yaw, 0, 'YXZ'))
+      scratch.set(x + offset.x, y + offset.y, z + offset.z).applyMatrix4(group.matrixWorld)
       return { x: scratch.x, y: scratch.y, z: scratch.z, intensity, distance: LANTERN_LIGHT_DISTANCE, flicker: true, phase }
     })
     return addLightSources(sources)

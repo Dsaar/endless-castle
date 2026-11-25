@@ -6,7 +6,7 @@ export const tatamiDefinition: SegmentDefinition<TatamiParams> = {
   kind: 'tatami',
   area: 'The Tatami Room',
   kanji: '座敷',
-  generate: (rand) => generateTatami(rand),
+  generate: (rand, context) => generateTatami(rand, context.roomsAfter),
   plan: (p) => straightPlan(p.size),
   Component: TatamiRoom,
   continues: (p) => p.runLeft > 0,

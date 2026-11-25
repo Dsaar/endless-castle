@@ -57,8 +57,11 @@ export function scrollSlots(halves: readonly WallHalf[]) {
   return halves.flatMap((h, i) => (h === 'plaster' ? SCROLL_OFFSETS.map((_, k) => i * SCROLL_OFFSETS.length + k) : []))
 }
 
-/** A fresh room: the first of a run of two to four. */
-export function generateTatami(rand: Random): TatamiParams {
+/**
+ * A fresh room: the first of a run of two to four, cut short to `roomsAfter` more rooms when a
+ * Forking Hall is due sooner.
+ */
+export function generateTatami(rand: Random, roomsAfter = Number.POSITIVE_INFINITY): TatamiParams {
   const cells = pick<5 | 6>(rand, [5, 6, 6])
   const halves: WallHalf[] = ['shoji', 'shoji', 'shoji', 'shoji']
   // Two or three halves are plaster, so the scroll always has somewhere else to move to.
@@ -71,7 +74,7 @@ export function generateTatami(rand: Random): TatamiParams {
     scroll: pick(rand, scrollSlots(halves)),
     lanterns: [true, true, true, true, chance(rand, 0.75)],
     entryWall: true,
-    runLeft: randInt(rand, 1, 3),
+    runLeft: Math.max(0, Math.min(randInt(rand, 1, 3), roomsAfter)),
     echo: 0,
     seed: randInt(rand, 1, 999_999),
   }

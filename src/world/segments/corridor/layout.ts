@@ -4,7 +4,8 @@ import type { LanternPlacement } from '../../../scene/kit/LanternInstances'
 import type { ShojiPlacement } from '../../../scene/kit/ShojiInstances'
 import type { BoxSpec, InstanceTransform, Vec3 } from '../../../scene/kit/types'
 import { BAY, HALF_BAY, phaseStream, pierPairs, spreadAlong } from '../common'
-import { litBays, shojiWall, WALL_HEIGHT } from '../shojiWall'
+import type { SegmentContext } from '../../segment'
+import { litBays, shojiWall, WALL_HEIGHT, WALL_KAMOI, WALL_PANEL, WALL_POST, WALL_SILL } from '../shojiWall'
 
 export const CORRIDOR_WIDTH = 2.4
 const HALF = CORRIDOR_WIDTH / 2
@@ -17,6 +18,14 @@ export const LANTERN_CORD = 0.12
 const BRACKET_Y = 1.98
 /** Vermilion portal posts are a little stouter than the cedar ones. */
 const PORTAL_POST = 0.17
+/** How often a corridor ends in a false exit: a door that opens onto the same corridor again. */
+const FALSE_EXIT_CHANCE = 0.3
+/** The false exit's doors stand this far inside the corridor's end. */
+export const END_DOOR_INSET = 0.08
+/** Each of the false exit's two sliding panels, and the lattice over them up to the end header. */
+export const END_DOOR_SIZE: [number, number] = [(CORRIDOR_WIDTH - WALL_POST) / 2, WALL_PANEL]
+const END_DOOR_TOP = WALL_SILL + WALL_PANEL + WALL_KAMOI
+export const END_TRANSOM_SIZE: [number, number] = [CORRIDOR_WIDTH - WALL_POST, WALL_HEIGHT - 0.24 - END_DOOR_TOP]
 
 /** How the two shoji walls are lit. */
 export type CorridorLighting = 'both' | 'left' | 'right' | 'alternate' | 'sparse' | 'dark-run'
@@ -33,10 +42,17 @@ export interface CorridorParams {
   pairedLanterns: boolean
   /** Bay lines where a vermilion portal (posts, lintel and tie) spans the corridor. */
   portals: number[]
+  /**
+   * Copies of this same corridor still to come. While above 0, the corridor ends in a door
+   * (the false exit) that opens onto the next copy.
+   */
+  repeats: number
+  /** Which copy this is: 0 for the first, 1, 2… for the same corridor again. */
+  echo: number
   seed: number
 }
 
-export function generateCorridor(rand: Random): CorridorParams {
+export function generateCorridor(rand: Random, context: Pick<SegmentContext, 'roomsAfter'>): CorridorParams {
   const bays = randInt(rand, 9, 17)
   const lighting = pick<CorridorLighting>(rand, ['both', 'both', 'left', 'right', 'alternate', 'sparse', 'dark-run'])
   const wall = (side: 'left' | 'right') => {
@@ -63,17 +79,32 @@ export function generateCorridor(rand: Random): CorridorParams {
     if (portals.every((q) => Math.abs(q - i) >= 3)) portals.push(i)
   }
 
+  const litLeft = wall('left')
+  const litRight = wall('right')
+  const lanternEvery = pick(rand, [2, 2, 3])
+  const pairedLanterns = chance(rand, 0.4)
+  const seed = randInt(rand, 1, 999_999)
+  // A false exit, if the junction schedule leaves room for the copies.
+  const repeats = chance(rand, FALSE_EXIT_CHANCE) ? Math.max(0, Math.min(randInt(rand, 1, 2), context.roomsAfter)) : 0
+
   return {
     bays,
     length: bays * BAY,
     lighting,
-    litLeft: wall('left'),
-    litRight: wall('right'),
-    lanternEvery: pick(rand, [2, 2, 3]),
-    pairedLanterns: chance(rand, 0.4),
+    litLeft,
+    litRight,
+    lanternEvery,
+    pairedLanterns,
     portals: portals.sort((a, b) => a - b),
-    seed: randInt(rand, 1, 999_999),
+    repeats,
+    echo: 0,
+    seed,
   }
+}
+
+/** The same corridor again, through the false exit: identical, one copy fewer still to come. */
+export function followCorridor(previous: CorridorParams): CorridorParams {
+  return { ...previous, repeats: previous.repeats - 1, echo: previous.echo + 1 }
 }
 
 export interface CorridorLayout {
@@ -86,6 +117,8 @@ export interface CorridorLayout {
   piers: InstanceTransform[]
   brackets: InstanceTransform[]
   lanterns: LanternPlacement[]
+  /** The lattice over the false exit's doors (none without one). */
+  endTransom: ShojiPlacement[]
 }
 
 export function buildCorridorLayout(p: CorridorParams): CorridorLayout {
@@ -123,6 +156,14 @@ export function buildCorridorLayout(p: CorridorParams): CorridorLayout {
     lacquer.push({ size: [W, 0.1, 0.12], position: [0, 2.26, z] })
   }
 
+  // The false exit: a door-head beam across the end, and a lit lattice up to the end header.
+  const endTransom: ShojiPlacement[] = []
+  if (p.repeats > 0) {
+    const z = -L + END_DOOR_INSET
+    boxes.push({ size: [W, WALL_KAMOI, 0.1], position: [0, WALL_SILL + WALL_PANEL + WALL_KAMOI / 2, z] })
+    endTransom.push({ position: [0, END_DOOR_TOP, z], lit: true })
+  }
+
   const battens: InstanceTransform[] = []
   for (let k = 1; k < p.bays * 2; k++) battens.push({ position: [0, WALL_HEIGHT - BATTEN[1] / 2, -k * HALF_BAY] })
 
@@ -150,5 +191,6 @@ export function buildCorridorLayout(p: CorridorParams): CorridorLayout {
     piers: pierPairs(pierZ, HALF - 0.3, -0.66, PIER_DEPTH),
     brackets,
     lanterns,
+    endTransom,
   }
 }

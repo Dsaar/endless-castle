@@ -45,11 +45,21 @@ npm run lint     # oxlint
 | Guide        | Tab / Shift+Tab             | Move between the tabs, the text and the button (focus stays inside the scroll) |
 | The Fall     | Walk off the end of the first Threshold | THE FALL plays by itself. Walking and looking are locked until you land: scrolling, keys, drags and swipes do nothing, and can't slow it. |
 | After the Fall | Walk back (S / scroll up) | You stop at the landing: the way back up is gone. |
+| Forking Hall / Crossroads | (arrive) | The walk stops just short of the middle of the hall, and three round buttons **← ● →** appear at the bottom of the screen |
+| Forking Hall / Crossroads | A / ←, or click **←** | Turn left: the camera swings round to the left doorway in 0.8 s, and you're carried a step into the turn |
+| Forking Hall / Crossroads | D / →, or click **→** | Turn right, the same way |
+| Forking Hall / Crossroads | W / ↑ / Space, a fresh scroll forward, or click **●** | Go straight on (the scroll that brought you to the middle doesn't count: scroll again) |
+| Forking Hall | After choosing | The doors of the two ways you didn't take slide shut. The way you came in stays open. |
+| Stairwell | (arrive) | You stop on the deck where the stairs split, and **↑ ↓** buttons appear |
+| Stairwell | E, or click **↑** | Take the flight up: you're carried across the deck to its foot, then walk (scroll / W) up it |
+| Stairwell | Q, or click **↓** | Take the flight down, the same way |
+| At a fork | Walk back (S / scroll up) | The buttons go; walk back in to bring them back. After choosing, you can still walk back round the turn or down the stairs and out the way you came. |
 | Castle (dev only) | **Dev** panel, top right | Drag the sliders to tune fog density and bloom. Click the panel title to collapse it. |
 | Castle (dev only) | **Dev → Guide** | **open** opens the guide, **find a figure** marks the next hidden figure found, **reset figures** clears them |
 | Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
 | Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
-| Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind (the 3 already built ahead come first: skip 4 times to reach it) |
+| Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind, including The Forking Hall, The Crossroads and The Stairwell (the 3 already built ahead come first: skip 4 times to reach it). While a kind is forced, the junction schedule is off. |
+| Castle (dev only) | **Dev → World → forking hall** | How many rooms until the next Forking Hall is due |
 | Castle        | `?seed=123` in the URL      | Build the castle from that seed (the same seed always builds the same castle). Without it, every visit builds a new one. |
 | Kit view (`?kit`, dev only) | Drag / right-drag / scroll | Orbit, pan and zoom around the current piece |
 | Kit view | Piece names at the bottom, or ← → | Glide the camera to the next piece |
@@ -261,7 +271,7 @@ Past the gate, the castle builds itself as you walk, one **segment** at a time, 
 
 **Segments** (`segment.ts`). A `Segment` is one placed piece of the castle:
 
-- `id`, which is also its room number (the Gate is 0).
+- `id`, the order of generation (the Gate is 0), and `room`, the number the HUD shows. They match, except that the walk out of a fork shares its fork's room number (see *Junctions and stairs*).
 - `kind`, `area` (e.g. *The Shoji Corridor*) and `kanji`.
 - `length`: how far the walk through it is.
 - `start` and `end` transforms: a position and a yaw (0 faces -Z, positive turns left).
@@ -274,10 +284,11 @@ A `SegmentDefinition` is a kind of segment:
 - `generate(rand, context)` picks a fresh copy's variations.
 - `plan(params)` gives its walk (control points) and its exit.
 - An optional `continues` / `follow` pair chains runs of nearly identical copies.
+- An optional `fork` makes it a place where the walk divides (see *Junctions and stairs*).
 
 `placeSegment` puts a plan at the previous segment's end.
 
-**The generator** (`WorldGenerator.ts`) builds the castle from a seed. Segment `id`'s variations come from `hash(seed, id)`, so a seed always builds the same castle. It always opens the same way, whatever the seed or the dev panel's forced kind: the Gate, a Threshold, **the Fall** and the Suspended Walkway the Fall lands on (rooms 0 to 3, see *The Fall* below). After that it picks a kind by weight (`segments/registry.ts`) and never picks the same kind twice in a row, except for Tatami Room runs. Each new segment's start is the previous one's end. `update(progress)`:
+**The generator** (`WorldGenerator.ts`) builds the castle from a seed. Segment `id`'s variations come from `hash(seed, id)`, so a seed always builds the same castle. It always opens the same way, whatever the seed or the dev panel's forced kind: the Gate, a Threshold, **the Fall** and the Suspended Walkway the Fall lands on (rooms 0 to 3, see *The Fall* below). After that it picks a kind by weight (`segments/registry.ts`) and never picks the same kind twice in a row, except for runs (Tatami Room echoes, a corridor's false exit). A Forking Hall comes on a schedule instead, every 3 to 5 rooms (see *Junctions and stairs*). Each new segment's start is the previous one's end. `update(progress)`:
 
 - Generates ahead so that at least **3 segments and 32 m** of walk lie in front of the player (short rooms come in runs).
 - Keeps the window to mount: **1 segment behind** to 3+ ahead. The window grows as soon as it has to, but only shrinks once the player is 1.5 m past a boundary, so pacing back and forth over a boundary doesn't mount and unmount the same segment.
@@ -295,15 +306,15 @@ A `SegmentDefinition` is a kind of segment:
 - `seed`
 - `forcedKind` (dev)
 
-Every segment counts as a room.
+Every segment counts as a room, except the walk out of a fork.
 
-**The five segment types** (`segments/<kind>/`: `layout.ts` turns params into placements, the component draws them, and `definition.ts` ties them together):
+**The five room types** (`segments/<kind>/`: `layout.ts` turns params into placements, the component draws them, and `definition.ts` ties them together). Three more, where the walk divides, are under *Junctions and stairs*.
 
 | Segment | Kanji | What it is | Varies |
 | ------- | ----- | ---------- | ------ |
 | **The Threshold** | 敷居 | An open 4 m walkway in the void with no railings, standing lanterns along both edges, a glowing tatami runner down the middle and piers dropping away beneath. Sometimes a cedar frame over the far end. | Length 12–24 m, lantern spacing 2.4–3.6 m, lanterns paired or staggered, end frame or not |
-| **The Suspended Walkway** | 懸橋 | A narrow 1.6 m plank bridge that curves and arches. Planks and stringers follow its slope. It has rope rails, cords rising from the rails into the dark, lanterns on posts with arms reaching over the walk, and 2–4 floating pavilions around it. The only segment that turns. | Length 16–28 m, turn ±25° (steered so the castle never heads more than 50° off the Gate's direction), S-bend, arch up to 0.8 m, lantern spacing 3.5–5.5 m, lanterns paired or alternating |
-| **The Shoji Corridor** | 廊下 | An enclosed, straight 2.4 m hall of shoji with transoms, a board ceiling with battens, floorboards running along it for a long vanishing view, wall lanterns on brackets at eye level, 1–2 vermilion portals (lacquered posts, lintel and tie), and a roof outside | 9–17 bays of 1.82 m (16–31 m). Which walls are lit: both, left, right, alternating bays, sparse, or a dark stretch. Lantern every 2–3 bays, paired or alternating |
+| **The Suspended Walkway** | 懸橋 | A narrow 1.6 m plank bridge that curves and arches. Planks and stringers follow its slope. It has rope rails, cords rising from the rails into the dark, lanterns on posts with arms reaching over the walk, and 2–4 floating pavilions around it. The only room that curves. | Length 16–28 m, turn ±25° (steered so the walk never heads more than 50° off the castle's axis: the Gate's direction, turned a quarter at each turn taken at a fork), S-bend, arch up to 0.8 m, lantern spacing 3.5–5.5 m, lanterns paired or alternating |
+| **The Shoji Corridor** | 廊下 | An enclosed, straight 2.4 m hall of shoji with transoms, a board ceiling with battens, floorboards running along it for a long vanishing view, wall lanterns on brackets at eye level, 1–2 vermilion portals (lacquered posts, lintel and tie), and a roof outside. 30% end in a **false exit** (see *Junctions and stairs*). | 9–17 bays of 1.82 m (16–31 m). Which walls are lit: both, left, right, alternating bays, sparse, or a dark stretch. Lantern every 2–3 bays, paired or alternating |
 | **The Open Gallery** | 縁側 | A veranda: shoji on one side, eave posts and a two-rail balustrade open to the void on the other, and a roof whose underside slopes up from the eave. Lanterns hang along the eave, and 1–2 pavilions float in the dark. | Which side the shoji is on, 8–14 bays, lit pattern, lantern every 1–2 bays |
 | **The Tatami Room** | 座敷 | A square room of tatami (4.55 or 5.46 m), shoji and plaster walls, floor lanterns in the corners, one hanging lantern and a vermilion hanging scroll. Its far doors (the middle two of four lit panels) slide open when you're 30% of the way in, onto the next room. That room is almost the same one: the scroll has moved and a lantern is missing. | Runs of 2–4 rooms. Room size, which wall halves are plaster, where the scroll hangs, whether there's a hanging lantern |
 
@@ -346,7 +357,7 @@ The shader count stays flat while you walk (19–20 in the dev panel, plus the d
 4. Pick **The Tatami Room** and skip four times. Walk in: about 1.5 m in, the far doors slide apart onto a nearly identical room. Its red scroll hangs somewhere else and a corner lantern is gone. The next room changes again.
 5. Walk back (**S** or scroll up): the segments behind are there again, exactly as they were, and doors you opened are still open.
 6. In **renderer**, the shader count doesn't climb as new segments appear. The draw calls stay in the ranges above.
-7. Open `/?seed=42` twice: the same castle both times (Threshold, the Fall, Suspended Walkway, Open Gallery, Suspended Walkway, two Tatami Rooms…). Without `?seed`, a different castle each visit.
+7. Open `/?seed=42` twice: the same castle both times (Threshold, the Fall, Suspended Walkway, three Tatami Rooms, a Forking Hall…; past a fork, the same ways chosen build the same castle). Without `?seed`, a different castle each visit.
 
 ### The Fall
 
@@ -471,6 +482,66 @@ All around the walk, the void is full of more castle: towers and rooms floating 
 6. Stand still and watch a room for a minute: a few drift slowly sideways or turn.
 7. Open `/?seed=42` again: the same towers in the same places. Drag the **Fog → density** slider: the distant castle thickens and thins with the rest.
 
+### Junctions and stairs
+
+The walk divides. Three new segments are **forks**, where you stop and choose a way: the **Forking Hall**, the **Crossroads** and the **Stairwell**. Some stairs hang upside down from hall ceilings, and some corridors end in a **false exit**.
+
+**How a fork works** (`segment.ts`, `WorldGenerator.ts`, `scene/fork/`):
+
+- A fork's walk ends at the point where the way divides, and the generator builds nothing past it until you choose. So the walk simply ends there, and you come to rest at the end, the walking spring easing you in.
+- Within 0.4 m of the end, `ForkDirector` sets `useForkStore.waiting`. The HUD shows the buttons and the fork's keys work (`useForkInput.ts`). Walk back more than 1.2 m and they go again.
+- A choice calls `generator.resolveFork(choice)`. That adds a **branch** segment (`segments/branch/`): the walk out along that way. It draws nothing (it runs through pieces the fork already built), and it shares the fork's area, kanji and room number. Then generation carries on from its end.
+- **The turn.** A side way starts with a tight quarter circle, 0.5 m in radius. The walk stops 0.5 m short of the hall's middle, so the turn ends exactly on the side doorway's center line. GSAP carries `scriptedWalk.progress` (`state/scriptedWalk.ts`) round it in **0.8 s** (`power2.inOut`). `Player` takes that as its position, and since the camera always faces along the path, it swings smoothly round to the doorway, with head-bob and footsteps. Walking input waits meanwhile, and a teleport cancels it. Straight on just takes a stride.
+- The joined walk stays smooth through every fork, so walking back works: back round the turn (or down the stairs) and out the way you came in.
+- `useForkStore.chosen` remembers the way taken at each fork, so halls can close their doors, and close them again if they remount.
+
+**The fork segments:**
+
+| Segment | Kanji | What it is | Choose |
+| ------- | ----- | ---------- | ------ |
+| **The Forking Hall** | 岐路 | A tall square hall (5 bays, 9.1 m, ceiling 4.6 m): shoji walls up to the door heads, plaster above with a band of glowing clerestory lattices, a coffered ceiling, corner floor lanterns and a big lantern hanging in the middle. A doorway in the middle of every wall, each with a pair of lit sliding shoji. Through the three ways out, a short lit vestibule (2 bays) leads off into the dark; the next room attaches at its end. Once you choose, the doors of the other two ways slide shut (1.4 s). | ← ● → (A / W / D) |
+| **The Crossroads** | 辻 | The same hall with no doors at all: every way is open. The room beyond each way is **built in advance**, as soon as the Crossroads is (`previews`), so you can look down all three before you choose. Choosing keeps that one (it keeps its React key, so it never remounts), and the other two stay as they are, open, until the hall itself unmounts. | ← ● → (A / W / D) |
+| **The Stairwell** | 階段 | An open stair tower: a deck where the way splits, then two flights side by side, 13 risers of 0.2 m each (a story). One climbs to a lantern-lit landing, the other goes down into the dark to a landing a story below. Open treads, handrails, landings held up from the void, all under one roof on four tall posts. Lit by floor lanterns at the deck's near corners, a lantern hanging over the deck, a small lantern on the newel post where the flights part, and one on each landing. Choosing carries you across the deck to the foot of your flight (1.5 s, a smooth S-bend); then you walk it. | ↑ ↓ (E / Q) |
+
+Both halls share `segments/hall/` (`layout.ts`, `Hall.tsx`, `HallDoors.tsx`). Shared stair geometry is in `segments/stairs.ts`.
+
+**On the stairs** (`Player.tsx`, `player/tuning.ts`). On a slope steeper than the walkway's arches, the head-bob changes to one dip per riser, timed from the flight's foot, so each dip lands in the middle of a tread. The camera tilts only 45% of the slope, so you look up the flight, not at the ceiling. The walking line runs exactly through the tread middles, rounding off only where it meets the floor and the landing.
+
+**Hanging stairs** (`pieces/HangingStairs.tsx`, `hangingStairsLayout.ts`). About half the halls have a staircase hanging upside down from the ceiling, in one corner quarter, clear of the walk: a normal flight (7–9 risers, with closed risers for a clear stepped profile) reflected about the ceiling, its landing hanging lowest on posts up to the ceiling, and a standing lantern upside down on the landing, head down into the room. A hall that comes straight after a Stairwell always has one. Visual only: nothing walks on it. (`LanternInstances` now takes a `pitch` for this.)
+
+**The false exit** (`segments/corridor/`). 30% of Shoji Corridors end in a closed pair of lit shoji with a lattice above. They slide open as you come within 5 m, onto **the same corridor again**: the same params and seed, down to the lantern flicker. Only the room number has moved on. A few steps in, the subtitle reads *The same corridor.* / 同じ廊下。 Sometimes that one has the door too, and opens onto it a third time.
+
+**The junction schedule** (`WorldGenerator.ts`). A Forking Hall is always the 3rd, 4th or 5th room after the previous one (the first comes 3–5 rooms after the landing):
+
+- Every segment carries `untilJunction`, how many rooms may still come before a Forking Hall is due. A Forking Hall sets it to 2–4, from its own random stream; every room after counts down; at 0, the next room is a Forking Hall.
+- Runs are told how many rooms they may fill (`context.roomsAfter`), so a Tatami Room run or a false exit never makes it late.
+- The Crossroads and the Stairwell are picked at random (weights 0.45 and 0.6), never straight after another fork. The Crossroads is never picked just before a Forking Hall is due. The Stairwell is three times likelier then, so you often climb straight into a Forking Hall with stairs hanging from its ceiling.
+- Each segment also carries an `axis`, the heading the castle runs along: it turns a quarter at every side way taken. The Suspended Walkway now steers back toward it rather than toward the Gate's heading.
+
+**The HUD** (`ui/hud/ForkChoice.tsx`). The buttons sit at the bottom center: 3.25 em circles with a thin bronze outline (`--hud-bronze`), each with its key underneath, lighting up with a lantern glow on hover and focus. They fade in on arrival and out once you choose. On small screens they sit above the corner panels.
+
+**Checked** in Node over 60 seeds × 300 segments, choosing at random at every fork:
+
+- Junction gaps: 3 rooms 1139 times, 4 rooms 1109, 5 rooms 1098, never anything else.
+- Room numbers always consecutive.
+- Joints meet within 7e-13 m. The worst change of heading at a joint is 0.28°, where a hall's walk meets its turn.
+- Every turn ends within 0.14° of its doorway's direction. The Stairwell's S-bend turns at most 7.4° per 10 cm.
+- The stair walking line sits exactly on the tread middles, away from the rounded ends.
+- Every Crossroads preview is the one committed when chosen.
+
+In the dev panel, a Crossroads with its three previews is about 110 draw calls, and a Forking Hall 80–110.
+
+**How to test:** run `npm run dev`, open `/?seed=905` and click **Enter in silence**. Walk, or press **Dev → World → skip to next segment**:
+
+1. After the Fall and the walkway, room **N° 004** is **The Crossroads 辻**. The walk stops near the middle and **← ● →** fade in at the bottom with A, W, D under them. Drag to look round: a corridor beyond the left way, a gallery straight on, a walkway to the right, and a staircase hanging upside down from the ceiling, front right, with a lantern standing head down on its landing.
+2. Scroll the wheel once more: nothing at first (that scroll brought you here). Scroll again: you go straight on. Or reload, come back and press **A**: the view swings left to the doorway in under a second, and you walk on into the corridor.
+3. (Left at the Crossroads.) The corridor ends in a closed pair of lit shoji. Walk toward them: they slide apart onto the same corridor. Walk through: *The same corridor.* appears, and the room number moves on.
+4. Room **N° 007** is **The Stairwell 階段**: the deck stops you where the flights split, and **↑ ↓** appear with E and Q under them. Press **E**: you're carried across to the foot of the up flight. Hold W: the camera tilts partly up the flight and dips once per step. (Or press **Q** and go down into the dark.)
+5. At the top is **The Forking Hall 岐路** (**forking hall** in the dev panel read *next room* on the stairs), with stairs hanging from its ceiling. Press **D**: you turn right, and the doors of the straight and left ways slide shut behind you. Walk back (S): back round the turn to the middle; the doors stay shut, and the entrance is still open.
+6. Keep going, watching **Dev → World → forking hall**: it counts down, and a Forking Hall comes every 3 to 5 rooms.
+7. Pick **The Stairwell** in **next kind** and skip four times. Press Q at each one: down, and down again.
+8. In DevTools device mode at 375 × 667: the buttons sit above the area plate and work by tapping.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -507,6 +578,8 @@ src/
     footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
     useFallStore.ts     The Fall's phase (idle / falling / done) and where the player stands on the deck
+    useForkStore.ts     Forks: the one you're waiting at, the way being taken, the ways chosen; choose()
+    scriptedWalk.ts     A stretch of walk carried out for the player (the turn at a fork), read by Player
   ui/
     TitleScreen.tsx     Title overlay: layout, intro fade, enter and fade-out logic
     TitleScreen.css
@@ -530,6 +603,7 @@ src/
       SoundToggle.tsx   Bottom right: SOUND ON / OFF
       Equalizer.tsx     The five bars on the sound toggle
       SubtitleLine.tsx  Lower center: English and Japanese subtitle lines
+      ForkChoice.tsx    Bottom center at a fork: ← ● → or ↑ ↓ round buttons with their keys
     guide/
       content.ts        Every word in the guide: tabs, lore, areas, key bindings, omens
       CastlePanel.tsx   The Castle tab
@@ -547,7 +621,11 @@ src/
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
     PostEffects.tsx     Bloom, tone mapping, vignette (closes in during the Fall), grain
     IntroCameraRig.tsx  GSAP dolly from far back to the start of the bridge
-    Player.tsx          First-person walker: smoothing, camera on the path, head-bob, look, footsteps (stands down during the Fall)
+    Player.tsx          First-person walker: smoothing, camera on the path, head-bob (per riser on stairs), look, footsteps (stands down during the Fall, follows scripted walks at forks)
+    fork/
+      ForkDirector.tsx  Where the walk divides: arrival, choosing (resolveFork), the GSAP turn
+      useForkInput.ts   A / D / ← / → / W / ↑ / Space / fresh scroll in halls, E / Q on stairs
+      tuning.ts         Arrive / leave distances, what counts as a fresh scroll
     fall/
       FallDirector.tsx  THE FALL's script: input lock, GSAP camera timeline, carried light, FOV / fog, landing, seal
       FallStreaks.tsx   Embers streaking upward during the fall (instanced shader quads)
@@ -603,10 +681,10 @@ src/
       roofGeometry.ts   The roof's geometry builder, shared by Roof and RoofInstances
       RoofInstances.tsx Identical roofs in three draw calls (any pitch, e.g. upside down)
   world/                Level generation
-    segment.ts          Segment, SegmentDefinition and SegmentPlan types; placeSegment, straightPlan, toWorld
-    WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, attaches each start to the last end, forgets old ones
+    segment.ts          Segment, SegmentDefinition, SegmentPlan, ForkSpec and BranchPlan types; placeSegment, straightPlan, toWorld, turnPoint
+    WorldGenerator.ts   Seeded generator: keeps 3+ ahead / 1 behind, stops at forks (resolveFork), Crossroads previews, the junction schedule, forgets old ones
     WorldPath.ts        Every segment's path joined into one walk, by distance; sealBefore() closes it behind the Fall
-    World.tsx           Mounts the window of segments; updates walkable bounds and the world store
+    World.tsx           Mounts the window of segments (and Crossroads previews); updates walkable bounds and the world store
     SegmentView.tsx     One segment's component in a group at its start transform
     Backdrop.tsx        Never unmounts: the distant pagodas and the warm hemisphere fill
     backdropLayout.ts   Where the pagodas stand, and the space around them to keep clear
@@ -617,18 +695,26 @@ src/
     pieces/
       pavilionLayout.ts Floating pavilion proportions and layout
       FloatingPavilion.tsx  A pavilion hanging in the void, gently bobbing
+      hangingStairsLayout.ts  An upside-down flight for a hall ceiling: where, and its pieces
+      HangingStairs.tsx A staircase hanging upside down from a ceiling, with an upside-down lantern
     segments/
-      registry.ts       The five random kinds and their weights (the Gate and the Fall are scripted)
+      registry.ts       The kinds the generator places and their weights (the Gate and the Fall are scripted; the Forking Hall is scheduled)
       common.ts         Bay size, pier pairs, lantern phases
       shojiWall.ts      Shoji wall along the walk (posts, beams, panels, transoms) and lit patterns
+      stairs.ts         The castle's one step (riser, tread), flights (treads, risers, stringers), the walking line
       threshold/        The Threshold: layout.ts, Threshold.tsx, definition.ts
       fall/             The Fall: layout.ts (dimensions, plan), timing.ts (the script's times), deckLayout.ts,
                         CollapsingDeck.tsx, shaftLayout.ts (placer + pillars, rooms, stairs, towers), FallShaft.tsx,
                         HangingPillars.tsx, InvertedRooms.tsx, FloatingStairs.tsx, LitTowers.tsx, TheFall.tsx, definition.ts
       walkway/          The Suspended Walkway: layout.ts (curve, planks, rails, posts), SuspendedWalkway.tsx, definition.ts
-      corridor/         The Shoji Corridor: layout.ts, ShojiCorridor.tsx, definition.ts
+      corridor/         The Shoji Corridor: layout.ts (and the false exit), ShojiCorridor.tsx, definition.ts
       gallery/          The Open Gallery: layout.ts, OpenGallery.tsx, definition.ts
       tatami/           The Tatami Room: layout.ts (runs, scroll and lantern changes), TatamiRoom.tsx, SlidingDoorPair.tsx, definition.ts
+      hall/             The tall hall both halls share: layout.ts (walls, vestibules, the turn plans), Hall.tsx, HallDoors.tsx
+      junction/         The Forking Hall: JunctionHall.tsx (doors that close), definition.ts
+      crossroads/       The Crossroads: Crossroads.tsx, definition.ts (previews)
+      stairwell/        The Stairwell: layout.ts (deck, flights, landings, tower, the walk up or down), Stairwell.tsx, definition.ts
+      branch/           The walk out of a fork: definition.ts, BranchWalk.tsx (draws nothing)
       Gate.tsx          The opening segment: bridge, landing, gate, back glow
       gate/
         definition.ts   The Gate as segment 0
@@ -659,7 +745,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 9. The HUD
 - [x] 10. The Fall
 - [x] 11. The distant castle
-- [ ] 12. Junctions and stairs
+- [x] 12. Junctions and stairs
 - [ ] 13. Special chambers
 - [ ] 14. The hidden figures
 - [ ] 15. Signs and presence

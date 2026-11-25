@@ -137,8 +137,10 @@ export function generateWalkway(rand: Random, context: SegmentContext): WalkwayP
     sway: randRange(rand, -0.22, 0.22),
     arch: chance(rand, 0.65) ? randRange(rand, 0.3, 0.8) : 0,
   }
-  // Steer back toward the Gate's heading rather than wander off sideways for good.
-  if (Math.abs(context.heading + path.turn) > MAX_HEADING) path.turn = -Math.sign(context.heading) * Math.abs(path.turn)
+  // Steer back toward the castle's axis (the Gate's heading, turned at each fork taken) rather
+  // than wander off sideways for good.
+  const drift = context.heading - context.axis
+  if (Math.abs(drift + path.turn) > MAX_HEADING) path.turn = -Math.sign(drift) * Math.abs(path.turn)
 
   // Floating pavilions, well clear of the walk on either side, above and below it.
   const curve = walkwayCurve(path)

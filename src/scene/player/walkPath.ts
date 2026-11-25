@@ -8,4 +8,6 @@ import type { Vector3 } from 'three'
 export interface WalkPath {
   /** Writes the point `distance` meters along the walk into `target`. Must not allocate. */
   getPointAt(distance: number, target: Vector3): Vector3
+  /** Floor height the stretch around `distance` starts from: stairs count their treads from it. Must not allocate. */
+  baseHeightAt?(distance: number): number
 }

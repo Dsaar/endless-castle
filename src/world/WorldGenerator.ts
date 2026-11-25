@@ -1,5 +1,15 @@
-import { createRandom, hashSeed, pickWeighted } from '../lib/random'
-import { placeSegment, type Segment, type SegmentDefinition, type SegmentKind } from './segment'
+import { createRandom, hashSeed, pickWeighted, randInt } from '../lib/random'
+import {
+  placeSegment,
+  type BranchChoice,
+  type BranchPreview,
+  type ForkSpec,
+  type Segment,
+  type SegmentContext,
+  type SegmentDefinition,
+  type SegmentKind,
+} from './segment'
+import { branchDefinition, type BranchParams } from './segments/branch/definition'
 import { fallDefinition } from './segments/fall/definition'
 import { gateDefinition } from './segments/gate/definition'
 import { SEGMENT_DEFINITIONS, SEGMENT_WEIGHTS, type RandomSegmentKind } from './segments/registry'
@@ -15,20 +25,30 @@ export const SEGMENTS_BEHIND = 1
 export const SEGMENT_HISTORY = 24
 /** The window grows as soon as it must, but only shrinks once the player is this far past (meters). */
 const HYSTERESIS = 1.5
+/** A Forking Hall is the 3rd, 4th or 5th room after the one before (after the landing, for the first). */
+export const JUNCTION_GAP: readonly [min: number, max: number] = [3, 5]
+/** Keeps the junction schedule's random numbers apart from the segments' own. */
+const SCHEDULE_SALT = 0x6a09e667
 
 /**
  * The castle always opens the same way, whatever the seed or the dev panel's forced kind:
  * the Gate, a Threshold, the Fall, and the Suspended Walkway the Fall lands on.
  */
 const OPENING: readonly SegmentKind[] = ['gate', 'threshold', 'fall', 'walkway']
-/** The Fall's id (its room number). */
+/** The Fall's id. */
 export const FALL_SEGMENT_ID = OPENING.indexOf('fall')
 
 /** Every kind's definition, scripted ones included. */
 function definitionOf(kind: SegmentKind): SegmentDefinition<unknown> {
   if (kind === 'gate') return gateDefinition
   if (kind === 'fall') return fallDefinition
+  if (kind === 'branch') return branchDefinition as SegmentDefinition<unknown>
   return SEGMENT_DEFINITIONS[kind]
+}
+
+/** A segment's fork, if the walk divides there. */
+export function forkOf(segment: Segment): ForkSpec<unknown> | undefined {
+  return definitionOf(segment.kind).fork
 }
 
 export interface WorldGeneratorOptions {
@@ -38,13 +58,27 @@ export interface WorldGeneratorOptions {
 
 /**
  * Generates the endless castle one segment at a time, from a seed. Segment `id`'s random
- * variations come from `hash(seed, id)`, so a seed always builds the same castle.
+ * variations come from `hash(seed, id)`, so a seed (and the same ways chosen) always builds the
+ * same castle.
  *
  * Starts with the fixed OPENING (Gate, Threshold, Fall, Suspended Walkway), then picks at
- * random. Each new segment's start is the previous one's end. `update(progress)`
- * keeps at least SEGMENTS_AHEAD segments (and MIN_DISTANCE_AHEAD meters) generated ahead of the
- * player, works out which segments should be mounted (`first` … `last`, ids), and forgets old
- * ones. Pure logic: `World` mounts the window.
+ * random. Each new segment's start is the previous one's end. `update(progress)` keeps at
+ * least SEGMENTS_AHEAD segments (and MIN_DISTANCE_AHEAD meters) generated ahead of the player,
+ * works out which segments should be mounted (`first` … `last`, ids), and forgets old ones.
+ *
+ * **Forks.** A fork (Forking Hall, Crossroads, Stairwell) ends its walk where the way divides,
+ * and nothing is generated past it, so the walk ends there and the player stops. When the
+ * player chooses, `resolveFork` adds the walk out along that way (a `branch` segment, part of
+ * the fork's room) and generation carries on from its end. A Crossroads builds the first room
+ * down each of its ways as soon as it is generated (`previews`), so every way is open and
+ * real; choosing one keeps that one.
+ *
+ * **The junction schedule.** Every segment carries `untilJunction`: how many more rooms may
+ * come before a Forking Hall must. A Forking Hall sets it to 2–4, every room after counts down,
+ * and at 0 the next room is a Forking Hall. Runs of nearly identical rooms are told how many
+ * rooms they may fill (`roomsAfter`), so they never make it late.
+ *
+ * Pure logic: `World` mounts the window, `ForkDirector` asks for the choices.
  */
 export class WorldGenerator {
   /** Remembered segments, oldest first. Ids are consecutive. */
@@ -70,14 +104,35 @@ export class WorldGenerator {
     return this.segments[id - this.segments[0].id]
   }
 
+  /** The fork the walk ends at, waiting for a way to be chosen, or null. */
+  pendingFork(): Segment | null {
+    const last = this.segments[this.segments.length - 1]
+    return forkOf(last) ? last : null
+  }
+
+  /**
+   * Takes `choice` at the pending fork: adds the walk out along it (and, at a Crossroads, the
+   * room already built beyond). Returns the walk out, or null if there is no pending fork or it
+   * doesn't offer that way. Call `update` afterward.
+   */
+  resolveFork(choice: BranchChoice): Segment<BranchParams> | null {
+    const fork = this.pendingFork()
+    const spec = fork && forkOf(fork)
+    if (!fork || !spec?.choices.includes(choice)) return null
+    const preview = fork.previews?.find((p) => p.choice === choice)
+    const added = preview ? preview.segments : [this.branchOf(fork, choice, String(fork.id + 1))]
+    for (const segment of added) this.push(segment)
+    return added[0] as Segment<BranchParams>
+  }
+
   /** Call whenever progress changes. Cheap when nothing needs to change (no allocations). */
   update(progress: number) {
     const path = this.path
     while (
-      this.segments.length - 1 - path.indexAt(progress) < SEGMENTS_AHEAD ||
-      path.end - progress < MIN_DISTANCE_AHEAD
+      !this.pendingFork() &&
+      (this.segments.length - 1 - path.indexAt(progress) < SEGMENTS_AHEAD || path.end - progress < MIN_DISTANCE_AHEAD)
     ) {
-      this.generate()
+      this.push(this.next(this.segments[this.segments.length - 1]))
     }
 
     // Grow the window at once; shrink it only once the player is HYSTERESIS past the boundary,
@@ -114,44 +169,118 @@ export class WorldGenerator {
     return this.segments[0].id + Math.max(0, this.path.indexAt(progress) - SEGMENTS_BEHIND)
   }
 
-  private generate() {
-    const previous = this.segments[this.segments.length - 1]
-    const id = previous.id + 1
-    const rand = createRandom(hashSeed(this.seed, id))
-    const forced = this.options.forcedKind?.() ?? null
-    const startDistance = previous.startDistance + previous.length
-    const context = { id, previous, heading: previous.end.yaw }
+  /** Appends a segment; a Crossroads builds its previews as it arrives. */
+  private push(segment: Segment) {
+    this.segments.push(segment)
+    const spec = forkOf(segment)
+    if (spec?.preview && !segment.previews) {
+      segment.previews = spec.choices.map((choice, i) => this.preview(segment, choice, i))
+    }
+  }
 
-    // The opening is fixed: no forced kinds, no runs.
+  /** The way out of a Crossroads along `choice`, and the room beyond, keyed so they never remount once chosen. */
+  private preview(fork: Segment, choice: BranchChoice, index: number): BranchPreview {
+    const branch = this.branchOf(fork, choice, `${fork.id + 1}${choice}`)
+    const room = this.next(branch, hashSeed(this.seed, branch.id + 1, index + 1), `${branch.id + 1}${choice}`)
+    return { choice, segments: [branch, room] }
+  }
+
+  /** The walk out of `fork` along `choice`: the fork's area, room number and schedule; its axis turned if the way turns. */
+  private branchOf(fork: Segment, choice: BranchChoice, key: string): Segment {
+    const plan = forkOf(fork)!.branch(fork.params, choice)
+    const params: BranchParams = { forkId: fork.id, from: fork.kind, choice, plan }
+    const branch = placeSegment(branchDefinition, params, fork.id + 1, fork.end, fork.startDistance + fork.length)
+    branch.key = key
+    branch.area = fork.area
+    branch.kanji = fork.kanji
+    branch.room = fork.room
+    branch.untilJunction = fork.untilJunction
+    branch.axis = fork.axis + plan.end.yaw
+    return branch as Segment
+  }
+
+  /**
+   * The segment after `previous`: the opening, a Forking Hall when one is due, the next room
+   * of a run, or a weighted pick. Doesn't add it.
+   */
+  private next(previous: Segment, seed = hashSeed(this.seed, previous.id + 1), key?: string): Segment {
+    const id = previous.id + 1
+    const rand = createRandom(seed)
+    const forced = this.options.forcedKind?.() ?? null
+    // A forced kind (dev) switches the schedule off.
+    const roomsAfter = forced === null ? previous.untilJunction - 1 : Number.POSITIVE_INFINITY
+    const context: SegmentContext = {
+      id,
+      previous,
+      heading: previous.end.yaw,
+      axis: previous.axis,
+      roomsAfter,
+      afterStairs: previous.kind === 'branch' && (previous.params as BranchParams).from === 'stairwell',
+    }
+
+    let definition: SegmentDefinition<unknown>
+    let params: unknown
     const opening = OPENING[id]
     if (opening !== undefined) {
-      const definition = definitionOf(opening)
-      this.segments.push(placeSegment(definition, definition.generate(rand, context), id, previous.end, startDistance))
-      return
+      // The opening is fixed: no forced kinds, no runs.
+      definition = definitionOf(opening)
+      params = definition.generate(rand, context)
+    } else {
+      const previousDef = definitionOf(previous.kind)
+      const due = forced === null && previous.untilJunction <= 0
+      // Continue a run (nearly identical rooms), or pick a fresh kind.
+      const continuing =
+        !due &&
+        previousDef.follow !== undefined &&
+        (forced === null || forced === previous.kind) &&
+        previousDef.continues?.(previous.params) === true
+      if (continuing && previousDef.follow) {
+        definition = previousDef
+        params = previousDef.follow(previous.params, rand)
+      } else {
+        const kind: RandomSegmentKind = forced ?? (due ? 'junction' : pickKind(rand, previous, roomsAfter))
+        definition = SEGMENT_DEFINITIONS[kind]
+        params = definition.generate(rand, context)
+      }
     }
 
-    const previousDef = definitionOf(previous.kind)
+    const segment = placeSegment(definition, params, id, previous.end, previous.startDistance + previous.length)
+    if (key !== undefined) segment.key = key
+    segment.room = previous.room + 1
+    segment.axis = previous.axis
+    segment.untilJunction = this.untilJunction(segment, previous)
+    return segment
+  }
 
-    // Continue a run (nearly identical rooms), or pick a fresh kind.
-    const continuing =
-      previousDef.follow !== undefined &&
-      (forced === previous.kind || (forced === null && previousDef.continues?.(previous.params) === true))
-    if (continuing && previousDef.follow) {
-      const params = previousDef.follow(previous.params, rand)
-      this.segments.push(placeSegment(previousDef, params, id, previous.end, startDistance))
-      return
+  /** How many rooms may follow `segment` before a Forking Hall is due. */
+  private untilJunction(segment: Segment, previous: Segment) {
+    const last = OPENING.length - 1
+    if (segment.id < last) return Number.POSITIVE_INFINITY
+    if (segment.id === last || segment.kind === 'junction') {
+      const rand = createRandom(hashSeed(this.seed, segment.id, SCHEDULE_SALT))
+      return randInt(rand, JUNCTION_GAP[0], JUNCTION_GAP[1]) - 1
     }
-
-    const kind = forced ?? pickKind(rand, previous.kind)
-    const definition = SEGMENT_DEFINITIONS[kind]
-    const params = definition.generate(rand, context)
-    this.segments.push(placeSegment(definition, params, id, previous.end, startDistance))
+    return previous.untilJunction - 1
   }
 }
 
-/** A weighted pick that never repeats the previous kind (runs are handled separately). */
-function pickKind(rand: () => number, previous: SegmentKind): RandomSegmentKind {
+/**
+ * A weighted pick that never repeats the previous kind (runs are handled separately). No
+ * Crossroads or Stairwell straight after a fork; no Crossroads just before a Forking Hall
+ * (its previews would have to be one), and a Stairwell is likelier there, so you often climb
+ * into a Forking Hall with stairs hanging from its ceiling.
+ */
+function pickKind(rand: () => number, previous: Segment, roomsAfter: number): RandomSegmentKind {
   const weights: Partial<Record<SegmentKind, number>> = { ...SEGMENT_WEIGHTS }
-  delete weights[previous]
+  delete weights[previous.kind]
+  delete weights.junction
+  if (previous.kind === 'branch') {
+    delete weights.crossroads
+    delete weights.stairwell
+  }
+  if (roomsAfter < 1) {
+    delete weights.crossroads
+    if (weights.stairwell !== undefined) weights.stairwell *= 3
+  }
   return pickWeighted(rand, weights as Partial<Record<RandomSegmentKind, number>>)
 }

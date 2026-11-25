@@ -61,6 +61,12 @@ export class WorldPath implements WalkPath {
     return s.path.getPointAt(clamp(u, 0, 1), target)
   }
 
+  /** Floor height where the segment holding `distance` begins (stairs time their bob from it). */
+  baseHeightAt(distance: number) {
+    const i = this.indexAt(distance)
+    return i < 0 ? 0 : this.segments[i].start.y
+  }
+
   /** The list was trimmed at the front; keep the cursor pointing at the same segment. */
   shifted(count: number) {
     this.cursor = Math.max(0, this.cursor - count)

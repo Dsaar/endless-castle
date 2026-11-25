@@ -13,8 +13,13 @@ interface WorldState {
   area: string
   kanji: string
   kind: SegmentKind
-  /** Room number: the current segment's id. The Gate is 0, the first room past it is 1. */
+  /**
+   * Room number. The Gate is 0, the first room past it is 1. The walk out of a fork shares its
+   * fork's number.
+   */
   room: number
+  /** Rooms that may still come before a Forking Hall is due (Infinity in the opening). For the dev panel. */
+  untilJunction: number
   /** The deepest room reached so far. */
   furthestRoom: number
   /** Where the current segment begins and ends along the walk (meters). */
@@ -28,6 +33,7 @@ interface WorldState {
     kanji: string
     kind: SegmentKind
     room: number
+    untilJunction: number
     segmentStart: number
     segmentEnd: number
   }) => void
@@ -40,6 +46,7 @@ export const useWorldStore = create<WorldState>()((set) => ({
   kanji: '城門',
   kind: 'gate',
   room: 0,
+  untilJunction: Number.POSITIVE_INFINITY,
   furthestRoom: 0,
   segmentStart: 0,
   segmentEnd: 0,

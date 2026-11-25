@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
+import { scriptedWalk } from '../../state/scriptedWalk'
 import { useFallStore } from '../../state/useFallStore'
 import { useGameStore } from '../../state/useGameStore'
 import { usePlayerStore } from '../../state/usePlayerStore'
@@ -46,18 +47,19 @@ function wheelPixels(e: WheelEvent) {
   return e.deltaY
 }
 
-function isTyping(target: EventTarget | null) {
+export function isTyping(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }
 
 /**
  * Can the player act? Not until the intro camera has arrived, not while the guide is open,
- * and not during THE FALL (nothing may slow it or steer it).
+ * not during THE FALL (nothing may slow it or steer it), and not while a fork carries them
+ * into the way they chose.
  */
 function canMove() {
   const game = useGameStore.getState()
-  return game.introComplete && !game.guideOpen && useFallStore.getState().phase !== 'falling'
+  return game.introComplete && !game.guideOpen && useFallStore.getState().phase !== 'falling' && !scriptedWalk.active
 }
 
 /**

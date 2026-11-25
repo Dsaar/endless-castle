@@ -70,5 +70,20 @@ export const BOB_ROLL = 0.5
 /** How quickly the bob fades in and out as speed changes. */
 export const BOB_LAMBDA = 5
 
+// --- Stairs --------------------------------------------------------------------------------
+
+/** Every staircase's riser: the stair bob dips once per riser climbed or descended. */
+export { STAIR_RISER } from '../../world/segments/stairs'
+/** Head dip per riser on stairs, at walking pace. Replaces the walking bob there. */
+export const STAIR_BOB = 0.045
+/**
+ * The path's slope (rise over run) where the stair bob starts to take over, and where it has
+ * fully. The Suspended Walkway's arches stay below the first; a flight is about 0.71.
+ */
+export const STAIR_SLOPE_START = 0.3
+export const STAIR_SLOPE_FULL = 0.55
+/** On stairs the camera tilts only this share of the slope: you look up a flight, not at the ceiling. */
+export const STAIR_PITCH_FOLLOW = 0.45
+
 /** Longest frame step the simulation takes (after a tab switch, for example). */
 export const MAX_DT = 0.1

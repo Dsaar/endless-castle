@@ -318,6 +318,79 @@
   color: var(--hud-dim);
 }
 
+/* ---- Bottom center: the way to go at a fork ---- */
+
+.hud__fork {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--hud-gutter) + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-start;
+  gap: 1.1em;
+  transform: translate(-50%, 0.6em);
+  opacity: 0;
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+}
+
+.hud__fork--shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.hud__fork-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55em;
+}
+
+.hud__fork-button {
+  display: grid;
+  place-items: center;
+  width: 3.25em;
+  height: 3.25em;
+  padding: 0;
+  border: 1px solid var(--hud-bronze);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-void) 45%, transparent);
+  box-shadow: var(--hud-glow);
+  color: var(--color-ui-text);
+  font: inherit;
+  font-size: 1.125em;
+  line-height: 1;
+  text-shadow: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.4s ease,
+    box-shadow 0.4s ease,
+    background-color 0.4s ease;
+}
+
+/* The middle dot is a small mark, not a big glyph. */
+.hud__fork-button--straight span {
+  font-size: 0.55em;
+}
+
+.hud__fork-button:hover,
+.hud__fork-button:focus-visible {
+  border-color: var(--color-lantern);
+  background: color-mix(in srgb, var(--color-void) 25%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--color-lantern) 25%, transparent);
+}
+
+.hud__fork-button:focus-visible {
+  outline: 1px solid var(--color-lantern);
+  outline-offset: 3px;
+}
+
+.hud__fork-key {
+  /* Letter-spacing trails the last letter; this keeps the key centered under its button. */
+  padding-left: 0.3em;
+  color: var(--hud-dim);
+}
+
 /* ---- Small screens: everything scales down from the root font-size ---- */
 
 @media (max-width: 640px), (max-height: 480px) {
@@ -345,6 +418,11 @@
     bottom: calc(env(safe-area-inset-bottom) + clamp(8.5em, 19vh, 11em));
   }
 
+  /* Above the area plate and the buttons in the corners, which fill the bottom row. */
+  .hud__fork {
+    bottom: calc(var(--hud-gutter) + env(safe-area-inset-bottom) + 6.5em);
+  }
+
   .hud__subtitle-en {
     font-size: 1.15em;
   }
@@ -354,8 +432,14 @@
   .hud,
   .hud__panel,
   .hud__figure,
-  .hud__eq-bar {
+  .hud__eq-bar,
+  .hud__fork {
     transition: none;
+  }
+
+  .hud__fork,
+  .hud__fork--shown {
+    transform: translateX(-50%);
   }
 
   /* Bars hold still at uneven heights instead of dancing. */

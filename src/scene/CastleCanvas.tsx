@@ -11,6 +11,7 @@ import DistantCastle from './distant/DistantCastle'
 import DriftingMotes from './DriftingMotes'
 import FallDirector from './fall/FallDirector'
 import FallStreaks from './fall/FallStreaks'
+import ForkDirector from './fork/ForkDirector'
 import IntroCameraRig from './IntroCameraRig'
 import LightPool from './lighting/LightPool'
 import Player from './Player'
@@ -69,6 +70,8 @@ export default function CastleCanvas() {
         <IntroCameraRig />
         {/* Takes the camera over from the intro rig once it arrives. */}
         <Player path={generator.path} />
+        {/* Where the walk divides: stops you, asks which way, carries you round the turn. */}
+        <ForkDirector generator={generator} />
         {/* The scripted drop after the first Threshold: owns the camera while it runs. */}
         <FallDirector generator={generator} />
         <PostEffects />

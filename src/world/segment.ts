@@ -4,7 +4,21 @@ import type { Random } from '../lib/random'
 import type { Vec3 } from '../scene/kit/types'
 
 /** Every kind of segment the castle is built from. */
-export type SegmentKind = 'gate' | 'threshold' | 'fall' | 'walkway' | 'corridor' | 'gallery' | 'tatami'
+export type SegmentKind =
+  | 'gate'
+  | 'threshold'
+  | 'fall'
+  | 'walkway'
+  | 'corridor'
+  | 'gallery'
+  | 'tatami'
+  | 'junction'
+  | 'crossroads'
+  | 'stairwell'
+  | 'branch'
+
+/** A way on from a fork: three ways out of a hall, or a flight up or down. */
+export type BranchChoice = 'left' | 'straight' | 'right' | 'up' | 'down'
 
 /**
  * A place and a facing at floor level. `yaw` 0 faces -Z; positive turns left (toward -X),
@@ -30,8 +44,24 @@ export type SegmentComponent<P> = { bivarianceHack(props: SegmentProps<P>): Reac
 
 /** One piece of the endless castle, placed in the world. */
 export interface Segment<P = unknown> {
-  /** Order of generation: the Gate is 0, then 1, 2, 3… Also the room number. */
+  /** Order of generation: the Gate is 0, then 1, 2, 3… */
   id: number
+  /** React key. Usually the id; a Crossroads' previews keep theirs once one is chosen, so it never remounts. */
+  key: string
+  /**
+   * The room number shown to the player. Counts every segment except the walk out of a fork
+   * (a `branch`), which shares its fork's number.
+   */
+  room: number
+  /**
+   * How many more rooms may come after this one before a Forking Hall must (see
+   * `WorldGenerator`). Infinity in the opening.
+   */
+  untilJunction: number
+  /** The heading the castle runs along here: 0 from the Gate, turned a quarter at each turn taken at a fork. */
+  axis: number
+  /** A Crossroads builds the first room down every way before you choose (see `WorldGenerator`). */
+  previews?: BranchPreview[]
   kind: SegmentKind
   /** Shown to the player as where they are, e.g. "The Shoji Corridor". */
   area: string
@@ -49,6 +79,12 @@ export interface Segment<P = unknown> {
   /** This copy's random variations. */
   params: P
   Component: SegmentComponent<P>
+}
+
+/** One way out of a Crossroads, built in advance: the walk out of the hall and the room beyond. */
+export interface BranchPreview {
+  choice: BranchChoice
+  segments: Segment[]
 }
 
 /** A segment's shape in its own frame, worked out from its params. */
@@ -71,6 +107,37 @@ export interface SegmentContext {
   previous: Segment
   /** World yaw at its start (the previous segment's end yaw). */
   heading: number
+  /** The previous segment's `axis`: the walkway steers back toward it. */
+  axis: number
+  /**
+   * How many rooms may follow this one before a Forking Hall is due. Runs of nearly
+   * identical rooms keep within it, so the junction is never late.
+   */
+  roomsAfter: number
+  /** True when this room comes straight after a flight of the Stairwell. */
+  afterStairs: boolean
+}
+
+/** A fork's way out: a walk in the fork's end frame, and how much of it is walked for the player. */
+export interface BranchPlan extends SegmentPlan {
+  /** Meters of the walk the fork carries the player along when they choose (the turn, the step onto the stairs). */
+  drive: number
+  /** Seconds that takes. */
+  driveTime: number
+}
+
+/**
+ * Makes a segment a fork: its walk ends at the point where the way divides, and the generator
+ * builds nothing past it until the player chooses (see `ForkDirector`).
+ */
+export interface ForkSpec<P> {
+  /** How the player is asked: ← ● → for a hall, ↑ ↓ for stairs. */
+  picker: 'turn' | 'stairs'
+  choices: readonly BranchChoice[]
+  /** The walk out along `choice`, in the frame of the fork's end. */
+  branch(params: P, choice: BranchChoice): BranchPlan
+  /** Build the first room down every way in advance, so each one can be seen (the Crossroads). */
+  preview?: boolean
 }
 
 /** A kind of segment: how to vary it, how to lay it out, and how to build it. */
@@ -89,6 +156,8 @@ export interface SegmentDefinition<P> {
    */
   continues?(previous: P): boolean
   follow?(previous: P, rand: Random): P
+  /** Present on forks (Forking Hall, Crossroads, Stairwell). */
+  fork?: ForkSpec<P>
 }
 
 /** Local → world, for a frame placed at `t`. */
@@ -115,6 +184,10 @@ export function placeSegment<P>(
   const endPos = toWorld(start, [plan.end.x, plan.end.y, plan.end.z])
   return {
     id,
+    key: String(id),
+    room: id,
+    untilJunction: Number.POSITIVE_INFINITY,
+    axis: 0,
     kind: definition.kind,
     area: definition.area,
     kanji: definition.kanji,
@@ -126,6 +199,13 @@ export function placeSegment<P>(
     params,
     Component: definition.Component,
   }
+}
+
+/** Turns a local point about the origin by `yaw` (same convention as `toWorld`). */
+export function turnPoint([x, y, z]: Vec3, yaw: number): Vec3 {
+  const c = Math.cos(yaw)
+  const s = Math.sin(yaw)
+  return [x * c + z * s, y, -x * s + z * c]
 }
 
 /** A straight walk of `length` meters down -Z, for `SegmentPlan`s. */

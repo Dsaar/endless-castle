@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Vector3 } from 'three'
 import { clamp, damp, smoothDamp, smoothstep, type Spring } from '../lib/math'
 import { emitFootstep } from '../state/footsteps'
+import { scriptedWalk } from '../state/scriptedWalk'
 import { useFallStore } from '../state/useFallStore'
 import { useGameStore } from '../state/useGameStore'
 import { clampTarget, usePlayerStore } from '../state/usePlayerStore'
@@ -26,6 +27,11 @@ import {
   RECENTER_LAMBDA,
   RUN_SPEED,
   SMOOTH_TIME,
+  STAIR_BOB,
+  STAIR_PITCH_FOLLOW,
+  STAIR_RISER,
+  STAIR_SLOPE_FULL,
+  STAIR_SLOPE_START,
   STEP_LENGTH,
   STILL_SPEED,
   WALK_SPEED,
@@ -62,6 +68,10 @@ const behind = new Vector3()
  * has finished, then takes over from exactly where it stopped. A `jumpTo` snaps instead.
  * Stands down while THE FALL is scripted (`FallDirector` owns the camera), and picks up again
  * at the landing with the look centered and no head-bob, where the fall left the camera.
+ *
+ * At a fork, `ForkDirector` may carry the player a short way (`scriptedWalk`): the quarter turn
+ * into a side way, the step across to a flight. On stairs, the head-bob follows the treads (one
+ * dip per riser) and the camera only half follows the slope, the way you'd look up a flight.
  */
 export default function Player({ path }: PlayerProps) {
   const canvas = useThree((s) => s.gl.domElement)
@@ -78,6 +88,7 @@ export default function Player({ path }: PlayerProps) {
     lastStep: 0,
     jumps: usePlayerStore.getState().jumps,
     bobAmp: 0,
+    stairAmp: 0,
     lookYaw: 0,
     lookPitch: 0,
     aroundYaw: 0,
@@ -103,6 +114,7 @@ export default function Player({ path }: PlayerProps) {
     if (m.suspended) {
       m.suspended = false
       m.bobAmp = 0
+      m.stairAmp = 0
       m.lookYaw = 0
       m.lookPitch = 0
       m.aroundYaw = 0
@@ -120,12 +132,20 @@ export default function Player({ path }: PlayerProps) {
     // --- Progress -----------------------------------------------------------------------
     const before = m.spring.value
     let target = store.targetProgress
-    if (input.held !== 0) target = clampTarget(target + input.held * KEY_SPEED * dt, before, pathStart, pathEnd)
-    m.goal = Math.abs(target - m.goal) < SETTLE_DISTANCE ? target : damp(m.goal, target, GOAL_LAMBDA, dt)
-    smoothDamp(m.spring, m.goal, SMOOTH_TIME, MAX_SPEED, dt)
-    if (Math.abs(m.goal - m.spring.value) < SETTLE_DISTANCE && Math.abs(m.spring.velocity) < SETTLE_SPEED) {
-      m.spring.value = m.goal
-      m.spring.velocity = 0
+    if (scriptedWalk.active) {
+      // Carried along: take the scripted position as is, and its rate of change as the speed.
+      target = scriptedWalk.progress
+      m.goal = target
+      m.spring.velocity = (target - before) / dt
+      m.spring.value = target
+    } else {
+      if (input.held !== 0) target = clampTarget(target + input.held * KEY_SPEED * dt, before, pathStart, pathEnd)
+      m.goal = Math.abs(target - m.goal) < SETTLE_DISTANCE ? target : damp(m.goal, target, GOAL_LAMBDA, dt)
+      smoothDamp(m.spring, m.goal, SMOOTH_TIME, MAX_SPEED, dt)
+      if (Math.abs(m.goal - m.spring.value) < SETTLE_DISTANCE && Math.abs(m.spring.velocity) < SETTLE_SPEED) {
+        m.spring.value = m.goal
+        m.spring.velocity = 0
+      }
     }
     m.spring.value = clamp(m.spring.value, pathStart, pathEnd)
     const progress = m.spring.value
@@ -143,14 +163,30 @@ export default function Player({ path }: PlayerProps) {
       emitFootstep({ foot: step % 2 === 0 ? 'left' : 'right', speed, running: speed >= RUN_SPEED, progress })
     }
 
+    // --- Where the path is, and which way it runs ----------------------------------------
+    path.getPointAt(progress, point)
+    path.getPointAt(Math.min(progress + TANGENT_DELTA, pathEnd), ahead)
+    path.getPointAt(Math.max(progress - TANGENT_DELTA, pathStart), behind)
+    ahead.sub(behind)
+    const flat = Math.hypot(ahead.x, ahead.z)
+    const baseYaw = Math.atan2(-ahead.x, -ahead.z)
+    // 0 on the level and gentle arches, 1 on a flight of stairs.
+    const stairs = smoothstep(STAIR_SLOPE_START, STAIR_SLOPE_FULL, flat > 1e-6 ? Math.abs(ahead.y) / flat : 0)
+    const basePitch = Math.atan2(ahead.y, flat) * (1 - stairs * (1 - STAIR_PITCH_FOLLOW))
+
     // --- Head-bob: one dip per step (lowest at the footfall), one sway per stride ---------
+    // On stairs, one dip per riser instead, lowest in the middle of each tread.
+    const moving = smoothstep(STILL_SPEED, WALK_SPEED * 0.6, speed)
     const bobTarget = reducedMotion.current
       ? 0
-      : BOB_WALK * smoothstep(STILL_SPEED, WALK_SPEED * 0.6, speed) +
-        (BOB_RUN - BOB_WALK) * smoothstep(WALK_SPEED, MAX_SPEED, speed)
+      : BOB_WALK * moving + (BOB_RUN - BOB_WALK) * smoothstep(WALK_SPEED, MAX_SPEED, speed)
     m.bobAmp = damp(m.bobAmp, bobTarget, BOB_LAMBDA, dt)
+    m.stairAmp = damp(m.stairAmp, reducedMotion.current ? 0 : STAIR_BOB * moving, BOB_LAMBDA, dt)
     const phase = (m.distance / STEP_LENGTH) * TWO_PI
-    const bobY = -m.bobAmp * (0.5 + 0.5 * Math.cos(phase))
+    const walkBob = -m.bobAmp * (0.5 + 0.5 * Math.cos(phase))
+    const tread = ((point.y - (path.baseHeightAt?.(progress) ?? 0)) / STAIR_RISER) * TWO_PI
+    const stairBob = -m.stairAmp * (0.5 + 0.5 * Math.cos(tread))
+    const bobY = walkBob + (stairBob - walkBob) * stairs
     const sway = m.bobAmp * BOB_SWAY * Math.sin(phase / 2)
 
     // --- Look ---------------------------------------------------------------------------
@@ -176,14 +212,6 @@ export default function Player({ path }: PlayerProps) {
     }
 
     // --- Camera -------------------------------------------------------------------------
-    path.getPointAt(progress, point)
-    path.getPointAt(Math.min(progress + TANGENT_DELTA, pathEnd), ahead)
-    path.getPointAt(Math.max(progress - TANGENT_DELTA, pathStart), behind)
-    ahead.sub(behind)
-    const flat = Math.hypot(ahead.x, ahead.z)
-    const baseYaw = Math.atan2(-ahead.x, -ahead.z)
-    const basePitch = Math.atan2(ahead.y, flat)
-
     // Sway sideways, relative to the walking direction.
     const rightX = Math.cos(baseYaw)
     const rightZ = -Math.sin(baseYaw)

@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useState } from 'react'
+import { useForkStore } from '../state/useForkStore'
 import { usePlayerStore } from '../state/usePlayerStore'
 import { useWorldStore } from '../state/useWorldStore'
 import SegmentView from './SegmentView'
@@ -14,6 +15,9 @@ interface WorldProps {
  * `useWorldStore`. It listens to progress with `subscribe` (no re-render per frame) and only
  * re-renders when the window changes. Mounting is a transition, so React can spread the
  * work of building a new segment over a few frames.
+ *
+ * A Crossroads' previews (the rooms down the ways not yet chosen) mount with it. The chosen
+ * one keeps its key when it joins the walk, so it never remounts.
  */
 export default function World({ generator }: WorldProps) {
   const [range, setRange] = useState(() => {
@@ -45,7 +49,8 @@ export default function World({ generator }: WorldProps) {
             area: segment.area,
             kanji: segment.kanji,
             kind: segment.kind,
-            room: segment.id,
+            room: segment.room,
+            untilJunction: segment.untilJunction,
             segmentStart: segment.startDistance,
             segmentEnd: segment.startDistance + segment.length,
           })
@@ -63,15 +68,29 @@ export default function World({ generator }: WorldProps) {
     }
 
     sync(usePlayerStore.getState().progress)
-    return usePlayerStore.subscribe((s, prev) => {
+    const unsubscribePlayer = usePlayerStore.subscribe((s, prev) => {
       if (s.progress !== prev.progress || s.jumps !== prev.jumps) sync(s.progress)
     })
+    // A way chosen at a fork: the walk now runs on past it.
+    const unsubscribeFork = useForkStore.subscribe((s, prev) => {
+      if (s.chosen !== prev.chosen) sync(usePlayerStore.getState().progress)
+    })
+    return () => {
+      unsubscribePlayer()
+      unsubscribeFork()
+    }
   }, [generator])
 
   const mounted = []
   for (let id = range.first; id <= range.last; id++) {
     const segment = generator.byId(id)
-    if (segment) mounted.push(<SegmentView key={segment.id} segment={segment} />)
+    if (!segment) continue
+    mounted.push(<SegmentView key={segment.key} segment={segment} />)
+    for (const preview of segment.previews ?? []) {
+      // The chosen way is in the walk itself now.
+      if (preview.segments[0] === generator.byId(segment.id + 1)) continue
+      for (const s of preview.segments) mounted.push(<SegmentView key={s.key} segment={s} />)
+    }
   }
   return <>{mounted}</>
 }

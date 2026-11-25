@@ -37,17 +37,18 @@ export const KEY_COLUMNS: readonly (readonly KeyBinding[])[] = [
     { keys: ['Scroll', 'W', '↑'], slashed: true, description: 'Walk forward. Scroll harder to run.' },
     { keys: ['Space'], description: 'Take one stride. Hold Shift to step back.' },
     { keys: ['S', '↓'], slashed: true, description: 'Walk back the way you came.' },
-    { keys: ['A', 'D', '←', '→'], description: 'Choose a way where the halls divide.' },
+    { keys: ['A', 'D', '←', '→'], description: 'Choose a way where the halls divide. W goes straight on.' },
   ],
   [
-    { keys: ['Q', 'E'], description: 'Glance left or right.' },
+    { keys: ['Q', 'E'], description: 'Go down or up where the stairs divide.' },
     { keys: ['Drag'], description: 'Look around.' },
     { keys: ['Click'], description: 'Reach for what you find.' },
     { keys: ['Esc'], description: 'Roll this scroll back up.' },
   ],
 ]
 
-export const TOUCH_NOTE = 'On a touch screen, swipe up to walk and swipe sideways to look.'
+export const TOUCH_NOTE =
+  'On a touch screen, swipe up to walk and swipe sideways to look. Where the way divides, tap the round buttons.'
 
 // --- Hidden Ones ----------------------------------------------------------------------------
 

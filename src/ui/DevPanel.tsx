@@ -25,6 +25,10 @@ const readRoom = () => {
   const w = useWorldStore.getState()
   return `${w.room} (furthest ${w.furthestRoom})`
 }
+const readJunction = () => {
+  const n = useWorldStore.getState().untilJunction
+  return Number.isFinite(n) ? (n <= 0 ? 'next room' : `after ${n} more room${n === 1 ? '' : 's'}`) : 'not yet'
+}
 const readArea = () => {
   const w = useWorldStore.getState()
   return `${w.kanji}  ${w.area}`
@@ -114,6 +118,7 @@ export default function DevPanel() {
     'distant castle': monitor(readDistant, { interval: 250 }),
     room: monitor(readRoom, { interval: 100 }),
     area: monitor(readArea, { interval: 100 }),
+    'forking hall': monitor(readJunction, { interval: 100 }),
     'next kind': {
       value: 'random',
       options: KIND_OPTIONS,
