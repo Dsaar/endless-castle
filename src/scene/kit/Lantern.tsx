@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Mesh, MeshStandardMaterial } from 'three'
+import type { LightSource } from '../lighting/lightSources'
 import PooledLight from '../lighting/PooledLight'
+import { gutterPaperFor } from '../signs/lanternGutter'
 import { lanternFlicker, paperGlow } from './flicker'
 import { CORD_BASE, getCordGeometry, getLanternShape, LANTERN_LIGHT_DISTANCE, type LanternKind } from './lanternGeometry'
 import { getLanternPaperMaterial, getWoodMaterial, LANTERN_PAPER_INTENSITY } from './materials'
@@ -43,6 +45,7 @@ export default function Lantern({
 }: LanternProps) {
   const shape = getLanternShape(kind)
   const paperRef = useRef<Mesh>(null)
+  const sourceRef = useRef<LightSource | null>(null)
 
   // Only a flickering lantern needs its own material; the clone shares the shader program.
   const ownMaterial = useMemo(() => (flicker ? getLanternPaperMaterial().clone() : null), [flicker])
@@ -52,7 +55,9 @@ export default function Lantern({
   useFrame(({ clock }) => {
     if (!flicker || !paperRef.current) return
     const f = lanternFlicker(clock.elapsedTime, phase)
-    ;(paperRef.current.material as MeshStandardMaterial).emissiveIntensity = LANTERN_PAPER_INTENSITY * paperGlow(f)
+    // A guttering lantern's paper dims with its light.
+    ;(paperRef.current.material as MeshStandardMaterial).emissiveIntensity =
+      LANTERN_PAPER_INTENSITY * paperGlow(f) * gutterPaperFor(sourceRef.current)
   })
 
   return (
@@ -69,6 +74,7 @@ export default function Lantern({
         distance={LANTERN_LIGHT_DISTANCE}
         flicker={flicker}
         phase={phase}
+        sourceRef={sourceRef}
       />
     </group>
   )

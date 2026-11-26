@@ -67,6 +67,9 @@ npm run lint     # oxlint
 | After the sixth figure | (none) | The finale plays by itself: walking and looking are locked, every light turns red, a last line appears, and the screen fades back to the title |
 | Castle (dev only) | **Dev → Guide → open** | Opens the guide |
 | Castle (dev only) | **Dev → Figures** | **found** and **mounted** (each mounted figure's distance and gaze time) monitor them. **always appear** puts every figure in every room of its area. **go to next hidden** ticks it, builds the first unfound figure's area as the next room and puts you at its door. **find next** finds the next figure at once (card, line, save; the sixth starts the finale). **reset figures** clears them and the saved progress. |
+| Anywhere | Walk within about 40 m of a hidden figure you haven't found | Its presence builds over a few seconds: the view darkens and drains of color, its rim waves and splits into red and blue fringes, and a dark ripple rolls across the view every few seconds from the figure's side. Stronger the closer you get, through walls too. It drops away as soon as you find the figure. |
+| Anywhere | (walking) | Now and then (every 12–28 s) a lantern near you and on screen gutters: it flickers hard and dims for about a second. Far more often near a hidden figure. |
+| Castle (dev only) | **Dev → Signs** | **presence** shows the strength, which figure and how far, and the heartbeat's rate. **events** counts each sign and shows the last. **force presence** holds the presence at a strength without a figure (0 gives it back to the figures). **ripple** rolls a ripple now. **gutter a lantern** gutters one near you now. |
 | Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
 | Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
 | Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind, including The Forking Hall, The Crossroads, The Stairwell, The Inverted Chamber and The Central Abyss (the 3 already built ahead come first: skip 4 times to reach it). While a kind is forced, the junction schedule is off. |
@@ -106,7 +109,7 @@ After the title screen's `onEnter`, a full-screen React Three Fiber canvas mount
 - **Void:** the scene background and `FogExp2` both use the void color (density 0.035), so everything fades into black.
 - **Starfield:** 2000 tiny warm-white points (shoji cream) on a 600-unit sphere that follows the camera, so they always look infinitely far away. They ignore fog. Most are faint pinpricks and a few are brighter. Each one twinkles slowly with its own speed and phase, all computed in the shader.
 - **Dust and embers:** two layers of amber, additive particles in a box that follows the camera. Dust: 500 faint, slow motes that stay below the bloom threshold. Embers: 160 brighter sparks that rise faster, flicker and bloom. Rising, swaying and recycling (a mote that leaves the top of the box comes back in at the bottom) all happen in the vertex shader, and motes fade near the box walls so they never pop. The CPU only updates a few uniforms per frame.
-- **Post-processing:** Bloom (mipmap blur, threshold 0.6, intensity 1.2) → ACES tone mapping → Vignette (darkness 0.7) → film grain (Noise, opacity 0.04). The scene renders into a half-float buffer, so emissive values above 1 reach the bloom intact.
+- **Post-processing:** Bloom (mipmap blur, threshold 0.6, intensity 1.2) → ACES tone mapping → Vignette (darkness 0.7) → film grain (Noise, opacity 0.04). (Since step 15 the presence's warp comes first and its grade sits after tone mapping; see *Signs and presence*.) The scene renders into a half-float buffer, so emissive values above 1 reach the bloom intact.
 - **Dev panel (leva):** only in `npm run dev`. Tunes fog density and bloom intensity, threshold, smoothing and radius live. The panel writes to a zustand store (`useAtmosphereStore`) and the scene reads from it. Production builds use the defaults, and leva is left out of the bundle (`import.meta.env.DEV` guards a lazy import).
 - Stars and motes use seeded randomness (`src/lib/random.ts`), so the layout is the same on every reload.
 
@@ -663,6 +666,47 @@ Six figures hide in the castle, one per area type. Find all six and the castle e
 7. **find next** six times also plays the finale, without walking anywhere.
 8. Turn **always appear** off and walk: figures turn up in only some rooms of their area, and the same room always has or hasn't one.
 
+### Signs and presence
+
+The castle warns you when one of the hidden ones is near. Everything lives in `scene/signs/`; the numbers are in `scene/signs/tuning.ts`.
+
+**Presence** (`PresenceDirector.tsx`, `presenceFx.ts`):
+- Each frame it finds the nearest unfound figure that is mounted. Within 40 m (it lets go at 43 m, so the edge doesn't flutter) its strength is 0.25 at the edge, rising in a straight line to 1 at 6 m. Walls don't block it: it is felt, not seen.
+- The felt level eases toward that strength over about 3 s, and fades over about 5 s as you walk away. When the figure is found it drops away in about half a second, even if another figure is close, and only then can a new presence begin.
+- **Heartbeat:** while present, a beat (lub, then dub 0.24 s later) at 54 bpm at the edge up to 116 bpm at full strength. Each beat darkens the vignette a little.
+- **Dark ripple:** every 8 s at the edge, down to every 3.5 s up close (±1 s). It is a GSAP timeline in which a dark front (taking up to 80% of the light) with a fading wake rolls 2.6 screen heights across the view in 2.6 s. It starts on the figure if it is in view, otherwise just off the edge on its side. The front also bends the image slightly as it passes.
+- It is off during the intro, the Fall and the finale, and holds still while the guide is open.
+
+**The look** (`PostEffects.tsx`): the chain is now *presence warp → bloom → finale red → ACES → presence grade → vignette → grain*, all still in **one** pass.
+- `PresenceWarpEffect.ts` is a custom convolution effect: it reads the frame at shifted points. A slow wave runs round the screen's rim and breathes in and out, always pulling inward, so nothing is read from off screen. Green and blue are drawn in toward the middle, so the rim splits into colored fringes (chromatic aberration). At full presence the rim is pulled in by up to 3.2% of the screen and splits by up to 1.8%. The effect starts about a third of the way out from the middle and is strongest in the corners. The wave cycles about every 5 s. It comes first because inside a merged pass a convolution effect sees the scene before the other effects.
+- `PresenceGradeEffect.ts` (after tone mapping) takes up to 50% of the color out and draws the ripple's dark band, so lanterns and their bloom darken with it while the void stays black.
+- The vignette comes in with the presence (offset 0.3 → 0.22, darkness 0.7 → 1). It is kept off the middle of the rim so the warp stays visible, and pulses 0.2 darker on each heartbeat.
+- When nothing is present, both effects pass the frame through unchanged. With reduced motion turned on, the warp and the fringes are cut to 35% and the wave holds still.
+
+**The guttering lantern** (`LanternGutterDirector.tsx`, `lanternGutter.ts`): every 12–28 s (the first not before 6 s), a lantern gutters. It must be within 12 m and on screen (inside 85% of the view from the middle), and nearer ones are likelier. If none is on screen, it looks again 2 s later. As a figure's presence grows, the wait runs up to 8× faster: about every 1.5–3.5 s up close. The gutter lasts 1.05 s. For the first half second the light cuts fully on and off (stepped 14 times a second, so it looks the same at any frame rate), then it holds at 6% and climbs back over the last 0.4 s. `LightPool` dims that source's point light, and its paper dims with it (down to 4%) (`LanternInstances`, and the Gate's single `Lantern` through `PooledLight`'s new `sourceRef`). Only one lantern gutters at a time. It doesn't happen in the intro, the Fall, the finale or with the guide open.
+
+**Events for the audio step** (`state/signs.ts`): one channel, `onSign(listener)`, carries every sign:
+
+| `kind` | When | Carries |
+| ------ | ---- | ------- |
+| `heartbeat` | Each beat while a figure is near | `bpm`, `level` (0 … 1), `figure` |
+| `presence` | A presence begins, or ends (`reason`: `away` or `found`) | `state`, `figure`, `distance` |
+| `ripple` | A dark ripple starts | `level`, `figure`, `duration` |
+| `lantern` | A lantern starts to gutter | its world position, `distance`, `duration`, `presence` |
+| `biwa` | A biwa string is plucked (forwarded from `emitBiwa`) | `reason` |
+
+`presenceFx.bpm` and `presenceFx.level` can also be read every frame for a continuous layer.
+
+**Performance:** no new draw calls or lights. The two effects merge into the existing effect pass, which adds three texture reads per pixel. The directors don't allocate per frame and never set React state. The gutter adds one comparison per light and per lantern.
+
+**How to test:** run `npm run dev`, open `/?seed=42` and click **Enter in silence**.
+
+1. At the Gate, **Dev → Signs → gutter a lantern**: one of the bridge lanterns in view stutters off and on, goes nearly dark and comes back within about a second, its paper as well as the light on the boards. **events** counts a lantern. With no lantern on screen (within 12 m), nothing happens: look toward one and press again.
+2. Drag **force presence** to 1: over about 3 s the view darkens and drains of color, and the edges are pulled in and wave slowly, with red and blue fringes (clearest on the pagoda windows near the corners). The vignette pulses with a heartbeat (**presence** shows the bpm). Every few seconds a dark band rolls across from the right. **ripple** sends one at once. Set it back to 0: it all fades away.
+3. Skip past the Fall, then **Dev → Figures → go to next hidden**. From the door, the figure is within 40 m: the presence begins and grows as you walk toward it (**presence** reads e.g. *0.60, No. 1 at 24.0 m, 91 bpm*), the ripples roll in from its side, and lanterns around you gutter every few seconds. Find it: everything is gone within about a second, and **events** shows *presence end (found)*.
+4. Walk away from an unfound figure instead: the effects fade slowly as you pass 43 m.
+5. With reduced motion turned on in the OS, the warp is much smaller and doesn't move.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -696,7 +740,7 @@ src/
     useFigureStore.ts   Which of the six hidden figures have been found (saved in localStorage), the FOUND card, lines said
     hiddenFigures.ts    discoverFigure / revisitFigure / clickFigure: save, card, line, and the finale on the sixth
     finaleFx.ts         The finale's red (0 … 1), tweened by FinaleOverlay, read by the lights and the red grade
-    session.ts          resetSession(): every store back to its first state, for entering again after the finale
+    session.ts          resetSession(): every store (and the presence and gutter state) back to its first state, for entering again after the finale
     usePlayerStore.ts   Progress along the walk: target, smoothed progress, speed, walkable bounds, walkBy(), jumpTo()
     useWorldStore.ts    Where you are: area, kanji, room number (and furthest), seed, dev's forced kind
     footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
@@ -705,7 +749,8 @@ src/
     useForkStore.ts     Forks: the one you're waiting at, the way being taken, the ways chosen; choose()
     scriptedWalk.ts     A stretch of walk carried out for the player (the turn at a fork), read by Player
     cameraFx.ts         The camera's roll (Inverted Chamber) and shake (room shift), tweened by GSAP, read by Player
-    biwa.ts             Biwa events (onBiwa / emitBiwa): the rooms are about to shift
+    biwa.ts             Biwa events (onBiwa / emitBiwa): the rooms are about to shift (also sent on as a biwa sign)
+    signs.ts            Every sign for audio (onSign / emitSign): heartbeat, presence, ripple, lantern, biwa
     useShiftStore.ts    The room shift under way (rooms leaving, every segment's move), rebuild version, dev room requests
   ui/
     TitleScreen.tsx     Title overlay: layout, intro fade, enter and fade-out logic
@@ -713,7 +758,7 @@ src/
     InkEmblem.tsx       Procedural vermilion brush-stroke circle (SVG)
     Smoke.tsx           Drifting smoke background
     Smoke.css
-    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide, Figures (found, mounted, always appear, go to next hidden, find next, reset), HUD subtitle / sound buttons, Special (inverted chamber, central abyss, biwa, roll) (dev builds only)
+    DevPanel.tsx        leva panel: fog and bloom, player monitors, world (seed, renderer stats, distant castle stats, room, area, next kind, skip), guide, Figures (found, mounted, always appear, go to next hidden, find next, reset), Signs (presence, events, force presence, ripple, gutter a lantern), HUD subtitle / sound buttons, Special (inverted chamber, central abyss, biwa, roll) (dev builds only)
     IntroOverlay.tsx    "You have been summoned." and the "Scroll to enter" hint, after the intro; fades once you walk
     IntroOverlay.css
     GuideScroll.tsx     The guide: hanging scroll, unroll / roll-up timeline, tabs, focus trap, Esc
@@ -749,7 +794,15 @@ src/
     Atmosphere.tsx      Void background and FogExp2
     Starfield.tsx       Twinkling star sphere (shader points)
     DriftingMotes.tsx   Rising, self-recycling particles (used for dust and embers)
-    PostEffects.tsx     Bloom, the finale's red grade, tone mapping, vignette (closes in during the Fall), grain
+    PostEffects.tsx     Presence warp, bloom, the finale's red grade, tone mapping, presence grade, vignette (closes in during the Fall and with a presence), grain
+    signs/              The signs: a hidden figure's presence, and lanterns guttering
+      PresenceDirector.tsx  The nearest unfound figure → presence level (ramps, resets when found), heartbeat, GSAP ripples, events
+      presenceFx.ts     The presence right now (level, figure, bpm, pulse, ripple), read by the post effects; dev requests
+      PresenceWarpEffect.ts  Convolution effect: slow wave and color split at the screen's rim, the ripple's bend
+      PresenceGradeEffect.ts  Desaturation and the ripple's dark band, after tone mapping
+      LanternGutterDirector.tsx  When a lantern gutters (faster with a presence), which one, the lantern event
+      lanternGutter.ts  The lantern guttering now and its level; the stutter curve; paper dimming
+      tuning.ts         Range, ramps, heartbeat, ripple, warp and gutter numbers
     figures/            The hidden figures (drawing and finding)
       HiddenFigure.tsx  One figure: silhouette and glow facing the camera, glow haze and breath, click to find
       FigureWatcher.tsx Finds a figure held near the middle of the view for 1 s (with the wall check)
@@ -783,8 +836,8 @@ src/
       walkPath.ts       WalkPath: what the player walks along (a point for any distance)
     lighting/
       lightSources.ts   Registry of warm light sources (position, intensity, reach, flicker)
-      LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades; amber to vermilion in the finale
-      PooledLight.tsx   Registers one source at its world position (instead of <pointLight>); follows its segment in a room shift
+      LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades; dims a guttering lantern; amber to vermilion in the finale
+      PooledLight.tsx   Registers one source at its world position (instead of <pointLight>); follows its segment in a room shift; can hand its source out (sourceRef)
     RenderStats.tsx     Dev: draw calls, triangles and shader programs per frame
     frameStats.ts       Where RenderStats (and the distant castle) leave their numbers for the dev panel
     Pagoda.tsx          Distant multi-story pagoda with lit window grids
@@ -908,7 +961,7 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 12. Junctions and stairs
 - [x] 13. Special chambers
 - [x] 14. The hidden figures
-- [ ] 15. Signs and presence
+- [x] 15. Signs and presence
 - [ ] 16. Audio
 - [ ] 17. Mobile, performance and polish
 - [ ] 18. Deploy

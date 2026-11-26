@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Vector3, type Group } from 'three'
 import { useSegmentMotion } from '../../world/shift/segmentMotion'
@@ -12,6 +12,8 @@ interface PooledLightProps {
   distance?: number
   flicker?: boolean
   phase?: number
+  /** Set to the registered source while mounted (a lantern's paper reads it to gutter with it). */
+  sourceRef?: RefObject<LightSource | null>
 }
 
 /**
@@ -20,7 +22,14 @@ interface PooledLightProps {
  * The parent transforms must not move after mount, except as a whole segment in a room shift:
  * then the light follows (`useSegmentMotion`).
  */
-export default function PooledLight({ position = [0, 0, 0], intensity, distance = 6, flicker = false, phase = 0 }: PooledLightProps) {
+export default function PooledLight({
+  position = [0, 0, 0],
+  intensity,
+  distance = 6,
+  flicker = false,
+  phase = 0,
+  sourceRef,
+}: PooledLightProps) {
   const ref = useRef<Group>(null)
   const source = useRef<LightSource | null>(null)
   const followed = useRef(-1)
@@ -34,9 +43,14 @@ export default function PooledLight({ position = [0, 0, 0], intensity, distance 
     const p = new Vector3().setFromMatrixPosition(group.matrixWorld)
     const s: LightSource = { x: p.x, y: p.y, z: p.z, intensity, distance, flicker, phase }
     source.current = s
+    if (sourceRef) sourceRef.current = s
     followed.current = -1
-    return addLightSources([s])
-  }, [x, y, z, intensity, distance, flicker, phase])
+    const remove = addLightSources([s])
+    return () => {
+      remove()
+      if (sourceRef?.current === s) sourceRef.current = null
+    }
+  }, [x, y, z, intensity, distance, flicker, phase, sourceRef])
 
   useFrame(() => {
     const s = source.current

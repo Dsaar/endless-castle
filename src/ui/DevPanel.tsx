@@ -2,10 +2,13 @@ import { useEffect } from 'react'
 import { Leva, button, levaStore, monitor, useControls } from 'leva'
 import { getLiveFigures } from '../scene/figures/liveFigures'
 import { distantCastleStats, frameStats } from '../scene/frameStats'
+import { requestGutter } from '../scene/signs/lanternGutter'
+import { forcePresence, presenceFx, requestRipple } from '../scene/signs/presenceFx'
 import { emitBiwa, onBiwa } from '../state/biwa'
 import { cameraFx } from '../state/cameraFx'
 import { onFootstep } from '../state/footsteps'
 import { discoverFigure } from '../state/hiddenFigures'
+import { onSign, type SignEvent, type SignKind } from '../state/signs'
 import { ATMOSPHERE_DEFAULTS, useAtmosphereStore } from '../state/useAtmosphereStore'
 import { useFigureStore } from '../state/useFigureStore'
 import { useGameStore } from '../state/useGameStore'
@@ -62,6 +65,33 @@ const readLiveFigures = () => {
   if (live.length === 0) return 'none mounted'
   return live.map((f) => `No. ${f.index + 1}: ${f.distance.toFixed(1)} m, ${f.dwell.toFixed(1)} s`).join(' | ')
 }
+const readPresence = () => {
+  const p = presenceFx
+  if (p.level <= 0) return 'none'
+  const who = p.figure >= 0 ? `No. ${p.figure + 1}${Number.isFinite(p.distance) ? ` at ${p.distance.toFixed(1)} m` : ''}` : 'forced'
+  return `${p.level.toFixed(2)}, ${who}, ${Math.round(p.bpm)} bpm`
+}
+const signCounts: Record<SignKind, number> = { heartbeat: 0, presence: 0, ripple: 0, lantern: 0, biwa: 0 }
+let lastSign = 'none yet'
+function describeSign(e: SignEvent) {
+  switch (e.kind) {
+    case 'heartbeat':
+      return `heartbeat ${Math.round(e.bpm)} bpm`
+    case 'presence':
+      return `presence ${e.state}${e.reason ? ` (${e.reason})` : ''}`
+    case 'ripple':
+      return `ripple ${e.level.toFixed(2)}`
+    case 'lantern':
+      return `lantern at ${e.distance.toFixed(1)} m`
+    case 'biwa':
+      return `biwa (${e.reason})`
+  }
+}
+const readSigns = () => {
+  const c = signCounts
+  return `beats ${c.heartbeat}, presence ${c.presence}, ripples ${c.ripple}, lanterns ${c.lantern}, biwa ${c.biwa} | last: ${lastSign}`
+}
+
 /** The first figure not found yet, or the first one if all are. */
 const nextHidden = () => Math.max(0, useFigureStore.getState().found.indexOf(false))
 
@@ -90,6 +120,15 @@ export default function DevPanel() {
       onBiwa((event) => {
         biwaCount++
         lastBiwa = event.kind ? `${event.reason}, ${event.kind}` : event.reason
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
+      onSign((event) => {
+        signCounts[event.kind]++
+        lastSign = describeSign(event)
       }),
     [],
   )
@@ -195,6 +234,22 @@ export default function DevPanel() {
       if (next >= 0) discoverFigure(next)
     }),
     'reset figures': button(() => useFigureStore.getState().resetFound()),
+  })
+
+  // The signs. "presence" is the strength felt from the nearest unfound figure; "force presence"
+  // holds it at a strength (0: off, the figures decide) to see the look without a figure.
+  useControls('Signs', {
+    presence: monitor(readPresence, { interval: 100 }),
+    events: monitor(readSigns, { interval: 150 }),
+    'force presence': {
+      value: 0,
+      min: 0,
+      max: 1,
+      step: 0.01,
+      onChange: (v: number) => forcePresence(v > 0 ? v : null),
+    },
+    ripple: button(requestRipple),
+    'gutter a lantern': button(requestGutter),
   })
 
   useControls('HUD', {

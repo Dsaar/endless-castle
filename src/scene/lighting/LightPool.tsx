@@ -5,6 +5,7 @@ import { palette } from '../../lib/palette'
 import { smoothstep } from '../../lib/math'
 import { finaleFx } from '../../state/finaleFx'
 import { lanternFlicker } from '../kit/flicker'
+import { lanternGutter } from '../signs/lanternGutter'
 import { getLightSources } from './lightSources'
 
 /** How many real point lights exist. Fixed for the whole session, so shaders compile once. */
@@ -28,6 +29,7 @@ const bestScore = new Float32Array(LIGHT_POOL_SIZE + 1)
  * A fixed pool of point lights, handed each frame to the registered light sources nearest
  * the camera (sources ahead win over sources behind). A light fades to nothing as its source
  * approaches the edge of the chosen set, so a hand-over between sources is never visible.
+ * The one lantern guttering (`lanternGutter`) is dimmed by its gutter level.
  * In the finale every light turns from lantern amber to vermilion (`finaleFx.red`).
  * Mounted once per canvas. No allocations in the frame loop.
  */
@@ -83,7 +85,8 @@ export default function LightPool() {
       const fade = smoothstep(cutoff, cutoff - FADE_BAND, bestScore[k])
       light.position.set(s.x, s.y, s.z)
       light.distance = s.distance
-      light.intensity = s.intensity * fade * (s.flicker ? lanternFlicker(t, s.phase) : 1)
+      const gutter = s === lanternGutter.source ? lanternGutter.level : 1
+      light.intensity = s.intensity * fade * gutter * (s.flicker ? lanternFlicker(t, s.phase) : 1)
     }
   })
 

@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import { Euler, InstancedBufferAttribute, Vector3, type Group } from 'three'
 import { useSegmentMotion } from '../../world/shift/segmentMotion'
 import { addLightSources, type LightSource } from '../lighting/lightSources'
+import { gutterPaperFor } from '../signs/lanternGutter'
 import { lanternFlicker, paperGlow } from './flicker'
 import KitInstances from './KitInstances'
 import { CORD_BASE, getCordGeometry, getLanternShape, LANTERN_LIGHT_DISTANCE, type LanternKind } from './lanternGeometry'
@@ -38,8 +39,9 @@ const turn = new Euler(0, 0, 0, 'YXZ')
 /**
  * A row of identical lanterns in three draw calls (frames, paper, cords). Each lantern
  * flickers out of step through a per-instance glow attribute, and registers a light source
- * with the `LightPool`, which lights the nearest ones. The parent must not move after mount,
- * except as a whole segment in a room shift: then the lights follow it (`useSegmentMotion`).
+ * with the `LightPool`, which lights the nearest ones; a guttering lantern's paper dims with
+ * its light (`lanternGutter`). The parent must not move after mount, except as a whole
+ * segment in a room shift: then the lights follow it (`useSegmentMotion`).
  * A hanging lantern's cord turns with its pitch, so one stood on its head hangs up from the floor.
  */
 export default function LanternInstances({ kind, lanterns, size = 1, cord = 0.8, intensity = 10 }: LanternInstancesProps) {
@@ -96,11 +98,12 @@ export default function LanternInstances({ kind, lanterns, size = 1, cord = 0.8,
     const attribute = paper.getAttribute('instanceGlow') as InstancedBufferAttribute
     const glow = attribute.array as Float32Array
     const t = clock.elapsedTime
-    for (let i = 0; i < count; i++) glow[i] = paperGlow(lanternFlicker(t, lanterns[i].phase))
+    const l = lights.current
+    // A guttering lantern's paper dims with its light.
+    for (let i = 0; i < count; i++) glow[i] = paperGlow(lanternFlicker(t, lanterns[i].phase)) * gutterPaperFor(l?.sources[i])
     attribute.needsUpdate = true
 
     // The segment is moving (a room shift): carry the lights along, and fade them with it.
-    const l = lights.current
     const group = groupRef.current
     if (!motion || !l || !group || l.tick === motion.tick) return
     l.tick = motion.tick

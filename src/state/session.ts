@@ -1,4 +1,6 @@
 import { fallFx } from '../scene/fall/fallFx'
+import { resetLanternGutter } from '../scene/signs/lanternGutter'
+import { resetPresenceFx } from '../scene/signs/presenceFx'
 import { cameraFx } from './cameraFx'
 import { finaleFx } from './finaleFx'
 import { scriptedWalk } from './scriptedWalk'
@@ -34,4 +36,6 @@ export function resetSession() {
   scriptedWalk.progress = 0
   fallFx.speed = 0
   finaleFx.red = 0
+  resetPresenceFx()
+  resetLanternGutter()
 }

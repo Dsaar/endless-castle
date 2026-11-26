@@ -22,6 +22,8 @@ import PostEffects from './PostEffects'
 import { CANVAS_DPR, GL_OPTIONS } from './renderer'
 import RenderStats from './RenderStats'
 import ShiftDirector from './shift/ShiftDirector'
+import LanternGutterDirector from './signs/LanternGutterDirector'
+import PresenceDirector from './signs/PresenceDirector'
 import Starfield from './Starfield'
 import './CastleCanvas.css'
 
@@ -86,6 +88,9 @@ export default function CastleCanvas() {
         <ShiftDirector generator={generator} />
         {/* Finds a hidden figure that is looked at long enough. */}
         <FigureWatcher />
+        {/* The signs: a hidden figure's presence (heartbeat, warp, ripples) and lanterns guttering. */}
+        <PresenceDirector />
+        <LanternGutterDirector />
         <PostEffects />
         {import.meta.env.DEV && <RenderStats />}
       </Canvas>
