@@ -7,6 +7,7 @@ import { INTRO_START } from '../world/segments/gate/layout'
 import World from '../world/World'
 import { WorldGenerator } from '../world/WorldGenerator'
 import Atmosphere from './Atmosphere'
+import AudioListenerBinding from './AudioListenerBinding'
 import DistantCastle from './distant/DistantCastle'
 import DriftingMotes from './DriftingMotes'
 import FallDirector from './fall/FallDirector'
@@ -92,6 +93,8 @@ export default function CastleCanvas() {
         <PresenceDirector />
         <LanternGutterDirector />
         <PostEffects />
+        {/* Lantern crackles and doors are placed around this camera. */}
+        <AudioListenerBinding />
         {import.meta.env.DEV && <RenderStats />}
       </Canvas>
     </div>

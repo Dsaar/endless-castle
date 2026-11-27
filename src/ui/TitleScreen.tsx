@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
+import { audioEngine } from '../audio/AudioEngine'
 import { useGameStore } from '../state/useGameStore'
 import InkEmblem from './InkEmblem'
 import Smoke from './Smoke'
@@ -53,6 +54,9 @@ export default function TitleScreen({ onEnter, author, onCredits }: TitleScreenP
     if (leaving) return
     setLeaving(true)
     setSoundEnabled(sound)
+    // Browsers only let sound start from a click: make and resume the audio context now.
+    audioEngine.setEnabled(sound)
+    audioEngine.unlock()
     ctxRef.current?.add(() => {
       gsap.to(curtainRef.current, {
         opacity: 1,

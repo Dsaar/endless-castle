@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import type { Group } from 'three'
 import ShojiPanel from '../../../scene/kit/ShojiPanel'
+import { emitDoorAt } from '../../../state/doors'
 import { usePlayerStore } from '../../../state/usePlayerStore'
 import { useProgressTrigger } from '../../useProgressTrigger'
 
@@ -30,6 +31,7 @@ const DURATION = 1.5
  * `openAt`, or when the player is already past it (the room remounted behind them).
  */
 export default function SlidingDoorPair({ z, y, width, height, roomSide, track, openAt, seed }: SlidingDoorPairProps) {
+  const rootRef = useRef<Group>(null)
   const leftRef = useRef<Group>(null)
   const rightRef = useRef<Group>(null)
   const tween = useRef<gsap.core.Timeline | null>(null)
@@ -44,6 +46,7 @@ export default function SlidingDoorPair({ z, y, width, height, roomSide, track, 
       const r = rightRef.current
       if (!l || !r) return
       tween.current?.kill()
+      if (!immediate && rootRef.current) emitDoorAt(rootRef.current, 'slide-open', DURATION + 0.12)
       if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         l.position.x = -openX
         r.position.x = openX
@@ -67,7 +70,7 @@ export default function SlidingDoorPair({ z, y, width, height, roomSide, track, 
 
   const x0 = startOpen ? openX : closedX
   return (
-    <group position={[0, y, z + roomSide * track]}>
+    <group ref={rootRef} position={[0, y, z + roomSide * track]}>
       <group ref={leftRef} position={[-x0, 0, 0]}>
         <ShojiPanel size={[width, height]} seed={seed} />
       </group>

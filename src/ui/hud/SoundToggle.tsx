@@ -1,3 +1,4 @@
+import { audioEngine } from '../../audio/AudioEngine'
 import { useGameStore } from '../../state/useGameStore'
 import Equalizer from './Equalizer'
 
@@ -11,7 +12,11 @@ export default function SoundToggle() {
       type="button"
       className="hud__button hud__sound"
       aria-pressed={on}
-      onClick={() => setSoundEnabled(!on)}
+      onClick={() => {
+        // A click may resume the audio context (and make it, if entering never did).
+        audioEngine.unlock()
+        setSoundEnabled(!on)
+      }}
     >
       <Equalizer playing={on} />
       {/* Named "Sound"; aria-pressed carries on / off for screen readers. */}

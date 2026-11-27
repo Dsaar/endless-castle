@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import AudioDirector from './audio/AudioDirector'
 import CastleCanvas from './scene/CastleCanvas'
 import { resetSession } from './state/session'
 import { useGameStore } from './state/useGameStore'
@@ -44,6 +45,7 @@ export default function App() {
   return (
     <>
       <CastleCanvas />
+      <AudioDirector />
       <IntroOverlay />
       <HUD />
       <GuideScroll />

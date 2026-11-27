@@ -8,6 +8,7 @@ import { useDisposable } from '../../../scene/kit/useDisposable'
 import WoodBeam from '../../../scene/kit/WoodBeam'
 import type { Vec3 } from '../../../scene/kit/types'
 import PooledLight from '../../../scene/lighting/PooledLight'
+import { emitDoorAt } from '../../../state/doors'
 import { useProgressTrigger } from '../../useProgressTrigger'
 import DoorLightSpill from './DoorLightSpill'
 import { getSpillMaterial } from './doorSpillMaterial'
@@ -60,6 +61,7 @@ export default function GateDoors({ position, width, height, openAt }: GateDoors
       }),
     [],
   )
+  const rootRef = useRef<Group>(null)
   const leftRef = useRef<Group>(null)
   const rightRef = useRef<Group>(null)
   const glowRef = useRef<Mesh>(null)
@@ -73,6 +75,7 @@ export default function GateDoors({ position, width, height, openAt }: GateDoors
       if (!l || !r || !glow) return
       const spill = getSpillMaterial()
       tween.current?.kill()
+      if (!immediate && rootRef.current) emitDoorAt(rootRef.current, 'gate', OPEN_DURATION)
       if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         l.rotation.y = OPEN_ANGLE
         r.rotation.y = -OPEN_ANGLE
@@ -102,7 +105,7 @@ export default function GateDoors({ position, width, height, openAt }: GateDoors
   }, [])
 
   return (
-    <group position={[x, y, z]}>
+    <group ref={rootRef} position={[x, y, z]}>
       <WoodBeam position={[0, SILL / 2, 0]} size={[width, SILL, 0.24]} />
       <WoodBeam position={[0, height + HEAD_RAIL / 2, 0]} size={[width, HEAD_RAIL, 0.24]} />
       {/* Each leaf turns about its outer edge (its hinge). */}

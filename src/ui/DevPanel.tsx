@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Leva, button, levaStore, monitor, useControls } from 'leva'
+import { audioEngine } from '../audio/AudioEngine'
 import { getLiveFigures } from '../scene/figures/liveFigures'
 import { distantCastleStats, frameStats } from '../scene/frameStats'
 import { requestGutter } from '../scene/signs/lanternGutter'
@@ -90,6 +91,12 @@ function describeSign(e: SignEvent) {
 const readSigns = () => {
   const c = signCounts
   return `beats ${c.heartbeat}, presence ${c.presence}, ripples ${c.ripple}, lanterns ${c.lantern}, biwa ${c.biwa} | last: ${lastSign}`
+}
+
+/** Dev: a door 3 m to the right and 3 m ahead. */
+function playDoorAround(kind: 'slide-open' | 'slide-close' | 'gate', duration: number) {
+  const [x, y, z] = audioEngine.worldAround(3, 3)
+  audioEngine.door({ kind, x, y: y - 1.2, z, duration })
 }
 
 /** The first figure not found yet, or the first one if all are. */
@@ -250,6 +257,26 @@ export default function DevPanel() {
     },
     ripple: button(requestRipple),
     'gutter a lantern': button(requestGutter),
+  })
+
+  // Each sound on its own, played from the engine (with sound on). Doors and the crackle come from
+  // the right of the view, so the panning shows.
+  useControls('Audio', {
+    context: monitor(() => audioEngine.state, { interval: 250 }),
+    'step (walk)': button(() => audioEngine.footstep({ foot: 'left', speed: 1.4, running: false, progress: 0 })),
+    'step (run)': button(() => audioEngine.footstep({ foot: 'right', speed: 3.4, running: true, progress: 0 })),
+    'shoji open': button(() => playDoorAround('slide-open', 1.6)),
+    'shoji shut': button(() => playDoorAround('slide-close', 1.55)),
+    'gate doors': button(() => playDoorAround('gate', 2.6)),
+    crackle: button(() => {
+      const [x, y, z] = audioEngine.worldAround(3, 3)
+      audioEngine.lantern(x, y, z, 1.05, 0)
+    }),
+    'biwa only': button(() => audioEngine.biwa()),
+    heartbeat: button(() => audioEngine.heartbeat(90, 0.6)),
+    'ripple swell': button(() => audioEngine.ripple(0.8, 2.6)),
+    'shift rumble': button(() => audioEngine.shiftRumble(1.5)),
+    'fall (sound only)': button(() => audioEngine.fallStart()),
   })
 
   useControls('HUD', {

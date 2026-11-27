@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import type { Group } from 'three'
 import ShojiPanel from '../../../scene/kit/ShojiPanel'
+import { emitDoorAt } from '../../../state/doors'
 import { WALL_PANEL_SIZE } from '../shojiWall'
 import type { DoorwaySpec } from './layout'
 
@@ -24,6 +25,7 @@ const OPEN_X = WIDTH * 1.5
  * walking back), they start shut.
  */
 export default function HallDoors({ doorway, closed, seed }: HallDoorsProps) {
+  const rootRef = useRef<Group>(null)
   const leftRef = useRef<Group>(null)
   const rightRef = useRef<Group>(null)
   const [startX] = useState(() => (closed ? CLOSED_X : OPEN_X))
@@ -34,6 +36,7 @@ export default function HallDoors({ doorway, closed, seed }: HallDoorsProps) {
     if (!l || !r) return
     const x = closed ? CLOSED_X : OPEN_X
     if (Math.abs(r.position.x - x) < 1e-6) return
+    if (rootRef.current) emitDoorAt(rootRef.current, closed ? 'slide-close' : 'slide-open', DURATION + 0.15)
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       l.position.x = -x
       r.position.x = x
@@ -49,7 +52,7 @@ export default function HallDoors({ doorway, closed, seed }: HallDoorsProps) {
   }, [closed])
 
   return (
-    <group position={doorway.position} rotation={[0, doorway.yaw, 0]}>
+    <group ref={rootRef} position={doorway.position} rotation={[0, doorway.yaw, 0]}>
       <group ref={leftRef} position={[-startX, 0, 0]}>
         <ShojiPanel size={[WIDTH, HEIGHT]} lit seed={seed} />
       </group>

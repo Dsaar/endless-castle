@@ -25,8 +25,8 @@ npm run lint     # oxlint
 
 | Where        | Input                       | Action                                      |
 | ------------ | --------------------------- | ------------------------------------------- |
-| Title screen | Click **Enter the castle**  | Enter with sound on                         |
-| Title screen | Click **Enter in silence**  | Enter with sound off                        |
+| Title screen | Click **Enter the castle**  | Enter with sound on: the audio starts on this click, and the wind and drone fade in |
+| Title screen | Click **Enter in silence**  | Enter with sound off (turn it on later with the HUD toggle) |
 | Title screen | Tab / Enter / Space         | Move between the buttons and choose one (the main button has focus on load) |
 | The Gate     | (none)                      | The intro plays by itself. Walking and looking unlock when the camera arrives. |
 | The Gate     | Walk toward the doors       | About 9 m out, the heavy doors swing open. Walk through the gate house and on into the castle. |
@@ -39,7 +39,8 @@ npm run lint     # oxlint
 | Looking      | Move the mouse (desktop)    | The view leans up to 4° toward the pointer |
 | The Gate     | First scroll (or W / ↑ / Space / swipe) | Opens the guide scroll instead of walking. Happens once. |
 | Guide        | **案内 GUIDE** button, bottom right | Opens the guide again |
-| HUD          | **SOUND ON / OFF**, bottom right | Turn sound on or off (the equalizer bars dance while it is on) |
+| HUD          | **SOUND ON / OFF**, bottom right | Turn sound on or off (the equalizer bars dance while it is on). Sound fades out in about 0.3 s, then the audio is paused to save the CPU. |
+| Guide        | (while it is open)          | Every sound is muffled, as if heard through the paper |
 | Guide        | Click a tab, or ← → / Home / End on the tabs | Switch between The Castle, Moving, Hidden Ones and Signs |
 | Guide        | Esc, or **Accept the summons** | Roll the scroll back up |
 | Guide        | Tab / Shift+Tab             | Move between the tabs, the text and the button (focus stays inside the scroll) |
@@ -70,6 +71,7 @@ npm run lint     # oxlint
 | Anywhere | Walk within about 40 m of a hidden figure you haven't found | Its presence builds over a few seconds: the view darkens and drains of color, its rim waves and splits into red and blue fringes, and a dark ripple rolls across the view every few seconds from the figure's side. Stronger the closer you get, through walls too. It drops away as soon as you find the figure. |
 | Anywhere | (walking) | Now and then (every 12–28 s) a lantern near you and on screen gutters: it flickers hard and dims for about a second. Far more often near a hidden figure. |
 | Castle (dev only) | **Dev → Signs** | **presence** shows the strength, which figure and how far, and the heartbeat's rate. **events** counts each sign and shows the last. **force presence** holds the presence at a strength without a figure (0 gives it back to the figures). **ripple** rolls a ripple now. **gutter a lantern** gutters one near you now. |
+| Castle (dev only) | **Dev → Audio** | **context** shows the audio state (*locked* before the first Enter click, then *running* or *suspended*). The buttons play each sound by itself, with sound on: a walking or running step, a shoji opening or shutting and the gate doors (from the front right), a lantern crackle (front right), the biwa without a shift, one heartbeat, a ripple swell, a shift rumble, and the Fall's sound without the Fall. |
 | Castle (dev only) | **Dev → HUD** | **show subtitle** cycles through three sample lines, **toggle sound** flips the sound toggle |
 | Castle (dev only) | **Dev → World → skip to next segment** | Teleport to just past the start of the next segment |
 | Castle (dev only) | **Dev → World → next kind** | Make every segment generated from now on a given kind, including The Forking Hall, The Crossroads, The Stairwell, The Inverted Chamber and The Central Abyss (the 3 already built ahead come first: skip 4 times to reach it). While a kind is forced, the junction schedule is off. |
@@ -425,7 +427,7 @@ The in-game overlay, in `src/ui/HUD.tsx` (styles in `src/ui/HUD.css`). It is a f
 - **Bottom left** (`hud/AreaPlate.tsx`): the current area name (28 px, uppercase, letter-spaced) with its kanji beside it, then a hairline and the room number, **N° 001**. Both come from `useWorldStore`. When you walk into another room, the old plate fades out while the new one fades in over 0.8 s. A long name wraps and grows upward, and the kanji drops under the name when there is no room beside it.
 - **Bottom right**:
   - **案内 GUIDE** (`hud/GuideToggle.tsx`) opens the guide scroll. It replaces the old top-left GUIDE button and shows from the start, not only after the guide has opened once. Focus comes back to it when the scroll closes.
-  - The sound toggle (`hud/SoundToggle.tsx`, `hud/Equalizer.tsx`) flips `soundEnabled` in `useGameStore`. While sound is on, five bars bounce at different speeds (CSS `transform` only) and the label reads **SOUND ON**. While it is off, the bars lie flat and the label reads **SOUND OFF**. For screen readers, the button is named "Sound" and uses `aria-pressed`. Nothing makes sound yet: audio comes in step 16.
+  - The sound toggle (`hud/SoundToggle.tsx`, `hud/Equalizer.tsx`) flips `soundEnabled` in `useGameStore`. While sound is on, five bars bounce at different speeds (CSS `transform` only) and the label reads **SOUND ON**. While it is off, the bars lie flat and the label reads **SOUND OFF**. For screen readers, the button is named "Sound" and uses `aria-pressed`. Since step 16 it drives the sound engine's master gain (see *Audio*).
 - **Center** (`hud/FoundCard.tsx`): the **FOUND** card when a hidden figure is found or clicked again (see *The hidden figures*).
 - **Lower center** (`hud/SubtitleLine.tsx`): subtitles. Any code can call `useSubtitleStore.getState().showSubtitle(en, ja, duration)`. The English line shows in italics, with a smaller, dimmer Japanese line under it (pass `''` to leave it out). The line fades in over 0.6 s and stays up for `duration` seconds (default 4). Then it fades out. A new line crossfades over the old one. `clearSubtitle()` removes it early. Screen readers hear each line through a `role="status"` region.
 - **Crossfades** (`src/ui/Crossfade.tsx`, `CrossfadeLayer.tsx`): a small reusable component. Give it a `contentKey`, and whenever the key changes it stacks the new content over the old one in the same grid cell. GSAP fades the old layer out and the new one in, then the old layer is removed. A layer that is leaving is `aria-hidden`.
@@ -707,6 +709,51 @@ The castle warns you when one of the hidden ones is near. Everything lives in `s
 4. Walk away from an unfound figure instead: the effects fade slowly as you pass 43 m.
 5. With reduced motion turned on in the OS, the warp is much smaller and doesn't move.
 
+### Audio
+
+Every sound is made live with the Web Audio API: noise, oscillators, filters and buffers computed in JS. There are no audio files. Everything is in `src/audio/`, and all the levels and shapes are in `audio/tuning.ts`.
+
+**The engine** (`AudioEngine.ts`, one shared `audioEngine`):
+- The signal chain: *voices → (dry, and a send to the hall reverb) → muffle lowpass → compressor → master gain → speakers*. The hall is one `ConvolverNode` with a 2.6 s impulse response generated at startup (decaying, darkening stereo noise with a few early reflections). The compressor keeps the Fall and stacked one-shots from clipping.
+- Browsers only allow sound to start from a click, so the `AudioContext` is created and resumed on the title screen's **Enter** click. That happens for **Enter in silence** too, so the HUD toggle can turn sound on later. The toggle's own click also resumes it.
+- The master gain follows `soundEnabled`, with a 0.12 s fade. With sound off, the context is suspended 0.6 s after the fade and every one-shot is skipped, so nothing piles up and plays all at once when sound comes back.
+- While the guide is open, everything is muffled through a 650 Hz lowpass.
+- Lantern crackles and doors go through `PannerNode`s. They use the cheap equal-power model (no HRTF) with a linear roll-off: full level within 2.5 m, silent at 40 m. Each panner is placed once, in the camera's space, when its sound starts (`AudioListenerBinding.tsx` hands the engine the camera). The listener never moves, so nothing updates per frame.
+- The engine has no per-frame work at all. `AudioDirector.tsx` (mounted with the castle) connects it to the game's events and stores.
+
+**The sounds:**
+
+| Sound | How it's made | Triggered by |
+| ----- | ------------- | ------------ |
+| Wind | Brown noise through a bandpass whose center drifts on a 0.045 Hz LFO, gusting on a second LFO at 0.11 Hz, with a thin drifting whistle on top | Always on. Fades in over about 4 s on entering and out on leaving. |
+| Drone | A 41 Hz sine, a twin detuned 0.4% (slow beating), an octave triangle and a quiet sawtooth fifth, through a lowpass that breathes on its own LFO | Always on |
+| Presence | The drone grows (up to +70%) and opens, a sour tritone pair beats in, and the wind drops by up to 45% | `presence` and `heartbeat` signs. It follows each beat's `level` and lets go when the presence ends. |
+| Footsteps on wood | A 3 ms-attack noise burst through a bandpass (about 1 kHz walking, 1.5 kHz running), over a sine thump that drops from 120 to 58 Hz. Pitch varies by ±9% and level by ±15%. Running steps come faster (one per 0.8 m), louder, brighter and shorter. Left and right feet sit slightly apart in stereo, and about 1 walking step in 12 creaks a board. | `onFootstep` |
+| Sliding shoji | A filtered noise sweep (a bandpass rising to about 1.3 kHz and back, following the panels' ease-in-out) over a low rumble in the track, then a soft knock. Shutting ends in a sharper clack. | New `onDoor` events (`state/doors.ts`). They come from the Tatami Room and Shoji Corridor doors as they slide open, and from the Forking Hall's doors as they slide shut. They are panned to the doorway. |
+| The Gate's doors | A thud as the bar lets go, a deep sweep of air and timber, a groaning hinge (a sawtooth wandering through 45–110 Hz into a narrow band), and a thud as the leaves come to rest | `onDoor` (`gate`), panned |
+| Lantern crackle | One noise source through a 3 kHz band, with dozens of tiny clicks written into its gain automation. They are dense during the light's 0.5 s stutter and sparse after it. Under them, a low flame "breath" dips with the light. A little louder near a hidden figure. | `lantern` sign, panned to the lantern |
+| Biwa | Karplus-Strong strings in the miyako-bushi scale on E (E F A B C). The buffers are computed when the audio unlocks, with a little fret buzz (*sawari*). Each pluck starts slightly sharp, as the plectrum lets go, and some bend up a semitone. Each comes with a plectrum click and a knock on the body. It plays one of four short phrases from a random side, deep in the hall reverb. | `biwa` sign (every room shift, and **Dev → Special → biwa**) |
+| Shift rumble | A low noise rumble over the shift's 1.5 s, with three heavy knocks as the rooms land | A room shift starting (`useShiftStore.active`) |
+| Heartbeat | Two low sine thumps (64 → 40 Hz, then 56 → 35 Hz), lub then dub 0.24 s apart, the same gap as the vignette's pulse, over a soft noise thud. Rate comes from the sign: 54 bpm at the edge of the presence range up to 116 bpm up close. Stronger presence makes each beat louder, and faster beats are shorter. Dry and centered. | `heartbeat` sign |
+| Ripple | A low noise swell that opens and closes over the ripple's 2.6 s, with a sub tone sinking from 58 to 36 Hz | `ripple` sign |
+| The Fall | Scheduled all at once on the Fall's own clock (`fall/timing.ts`), so it stays in step with the camera. Planks crack ahead from 0.2 s and the floor gives with a crash at 1.35 s. From 1.4 s a wind roar rises: a lowpass opens from 220 Hz to 3.6 kHz over the 4.6 s of acceleration, a whistle climbs with it and a buffeting tremolo deepens. It falls away over the braking, and two soft thumps mark the landing. | `useFallStore` → `falling` |
+| Finale | A last biwa phrase as the lights turn red, then the ambience dies away over about 9 s | `finale` |
+
+**Performance:** the always-on bed is 10 oscillators (6 tones, 4 LFOs), 1 noise source and a few filters. A footstep is about 8 short-lived nodes, and a crackle is 1 source and 4 nodes (plus its panner) however many clicks it has. One convolver serves every sound. Nothing runs per frame, no React state changes, and with sound off the context is suspended.
+
+**How to test:** run `npm run dev`, open `/?seed=42`, and click **Enter the castle** (use headphones to hear the panning).
+
+1. As the intro plays, low wind and a deep drone fade in. The wind slowly swells and changes color.
+2. Walk (W): footsteps on boards, a little different each time. Scroll fast to run: the steps come quicker and sharper. Now and then a board creaks.
+3. Walk up to the Gate: the heavy doors open with a thud, a groan and a deep sweep.
+4. Click **SOUND ON** in the HUD: everything fades out (**Dev → Audio → context** reads *suspended*). Click again to bring it back. Open the guide: the sound goes muffled until you close it.
+5. Walk the first Threshold into the Fall: cracking planks, a crash, a roar that rises to a whistle as you speed up and fades as you slow, then a soft landing.
+6. Past the Fall, stand still for 2 s: a biwa phrase rings out and the room rumbles as it shifts. Each time it is one of four phrases.
+7. Walk into a Tatami Room: the shoji ahead slide open with a papery swish, panned to where they are. At a Forking Hall, choose a way: the other doors slide shut with a clack.
+8. **Dev → Figures → go to next hidden** and walk toward it: the drone darkens, a sour tone creeps in, the wind thins, and a heartbeat comes in, faster as you get closer. Each ripple brings a low swell. Lanterns that gutter crackle from where they hang.
+9. **Dev → Audio** plays each sound on its own. Doors and the crackle come from the front right.
+10. Click **Enter in silence** instead: nothing plays until you turn sound on in the HUD.
+
 ### Kit dev view (`?kit`)
 
 Open <http://localhost:5173/?kit> in `npm run dev` to skip the title screen and see every piece in a row along X, each under its own hanging lantern (lit through a `LightPool`), with OrbitControls, the usual fog, stars and post-processing, and the Dev panel. The buttons at the bottom (or ← →) glide the camera between pieces with GSAP. `?kit&focus=3` opens on the fourth piece. Like the Dev panel, the view only exists in dev builds and isn't in the production bundle.
@@ -743,7 +790,8 @@ src/
     session.ts          resetSession(): every store (and the presence and gutter state) back to its first state, for entering again after the finale
     usePlayerStore.ts   Progress along the walk: target, smoothed progress, speed, walkable bounds, walkBy(), jumpTo()
     useWorldStore.ts    Where you are: area, kanji, room number (and furthest), seed, dev's forced kind
-    footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio later
+    footsteps.ts        Footstep events (onFootstep / emitFootstep), for audio
+    doors.ts            Door events (onDoor / emitDoor / emitDoorAt): shoji sliding open or shut, the Gate swinging open, with the doorway's world position
     useAtmosphereStore.ts  Fog and bloom values (+ defaults), written by the dev panel
     useFallStore.ts     The Fall's phase (idle / falling / done) and where the player stands on the deck
     useForkStore.ts     Forks: the one you're waiting at, the way being taken, the ways chosen; choose()
@@ -838,6 +886,7 @@ src/
       lightSources.ts   Registry of warm light sources (position, intensity, reach, flicker)
       LightPool.tsx     10 point lights handed to the nearest sources each frame, with fades; dims a guttering lantern; amber to vermilion in the finale
       PooledLight.tsx   Registers one source at its world position (instead of <pointLight>); follows its segment in a room shift; can hand its source out (sourceRef)
+    AudioListenerBinding.tsx  Hands the camera to the sound engine, so panned sounds are placed around it
     RenderStats.tsx     Dev: draw calls, triangles and shader programs per frame
     frameStats.ts       Where RenderStats (and the distant castle) leave their numbers for the dev panel
     Pagoda.tsx          Distant multi-story pagoda with lit window grids
@@ -940,7 +989,20 @@ src/
         DoorLightSpill.tsx  Additive light streak on the floor in front of the doors
         doorSpillMaterial.ts  Its shared material and canvas mask
         GateBackGlow.tsx  Faint warm haze behind the roof
-  audio/                Sound
+  audio/                Sound: all synthesized live with the Web Audio API, no files
+    AudioEngine.ts      The engine: context (unlocked on the Enter click), master gain following the toggle (suspends when off), muffle, compressor, hall reverb, panners; one method per sound
+    AudioDirector.tsx   Connects the engine to footsteps, doors, signs, room shifts, the Fall, the guide, the toggle and the finale (mounted with the castle)
+    tuning.ts           Every level and shape
+    nodes.ts            Shared helpers: noise sources, envelopes, thumps, equal-power panners, glides
+    buffers.ts          Computed buffers: white and brown noise, the hall's impulse response, Karplus-Strong plucks
+    Ambience.ts         Wind (filtered brown noise, LFO on the cutoff, gusts) and drone; darkens with a presence
+    footstep.ts         Footsteps on wood: bandpassed noise click and low thump, random pitch, run / walk
+    door.ts             Sliding shoji (filtered noise sweep, knock or clack) and the Gate (thud, sweep, groaning hinge)
+    crackle.ts          A guttering lantern's crackle (clicks written into gain automation) and flame breath
+    biwa.ts             Biwa phrases on Karplus-Strong strings (miyako-bushi scale), plectrum, bends
+    heartbeat.ts        Lub-dub: two low sine thumps and a soft thud
+    swells.ts           A ripple's low swell, and a room shift's rumble
+    FallRoar.ts         The Fall: deck cracking, the floor giving, the rising wind roar and whistle, the landing
 ```
 
 Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
@@ -962,6 +1024,6 @@ Style rules, palette and conventions are in [CLAUDE.md](CLAUDE.md).
 - [x] 13. Special chambers
 - [x] 14. The hidden figures
 - [x] 15. Signs and presence
-- [ ] 16. Audio
+- [x] 16. Audio
 - [ ] 17. Mobile, performance and polish
 - [ ] 18. Deploy
